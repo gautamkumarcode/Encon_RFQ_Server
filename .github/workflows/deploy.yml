@@ -122,13 +122,24 @@ jobs:
 
             echo "🔎 Checking build..."
 
-            test -f dist/server.js
+            ENTRY_FILE=""
+            if [ -f dist/server.js ]; then
+              ENTRY_FILE="dist/server.js"
+            elif [ -f dist/src/server.js ]; then
+              ENTRY_FILE="dist/src/server.js"
+            else
+              echo "❌ Error: Neither dist/server.js nor dist/src/server.js exists!"
+              ls -la dist/
+              exit 1
+            fi
+
+            echo "Found entry point at: $ENTRY_FILE"
 
             echo "🚀 Restarting PM2..."
 
             pm2 describe backend > /dev/null 2>&1 \
               && pm2 restart backend --update-env \
-              || pm2 start dist/server.js --name backend
+              || pm2 start "$ENTRY_FILE" --name backend
 
             pm2 save
 
