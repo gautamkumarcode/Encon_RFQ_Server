@@ -18,7 +18,7 @@ export function getGDriveConfig() {
   const clientSecret = (process.env.GDRIVE_OAUTH_CLIENT_SECRET || '').trim();
   const refreshToken = (process.env.GDRIVE_OAUTH_REFRESH_TOKEN || '').trim();
   const parentFolderId = (process.env.GDRIVE_PARENT_FOLDER_ID || '').trim();
-  const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQs').trim();
+  const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQ Tracker').trim();
   const shareWithEmails = (process.env.GDRIVE_SHARE_WITH || '').split(',').map((e) => e.trim()).filter(Boolean);
 
   const isConfigured = Boolean(clientId && clientSecret && refreshToken) || Boolean(parentFolderId);
@@ -432,7 +432,7 @@ export async function clearGoogleDriveData(): Promise<{ success: boolean; delete
             );
             console.log(`🗑️ Trashed Google Drive RFQ item: ${item.name}`);
             deletedCount++;
-          } catch (trashErr) {}
+          } catch (trashErr) { }
         }
       }
 

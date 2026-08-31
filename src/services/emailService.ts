@@ -1,7 +1,7 @@
 import nodemailer from 'nodemailer';
 
 const SMTP_USER = process.env.SMTP_USER || process.env.IMAP_USER || 'rfq@encon.co.in';
-const SMTP_PASS = process.env.SMTP_PASSWORD || process.env.IMAP_PASSWORD || 'flvgbxxcsbjjxtiv';
+const SMTP_PASS = process.env.SMTP_PASSWORD || process.env.IMAP_PASSWORD || '';
 const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
 const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
 
@@ -79,15 +79,14 @@ export async function sendAssignmentEmail(options: SendAssignmentEmailOptions): 
         </table>
       </div>
 
-      ${
-        enquiry.driveFolderUrl
-          ? `<div style="margin: 20px 0; text-align: center;">
+      ${enquiry.driveFolderUrl
+      ? `<div style="margin: 20px 0; text-align: center;">
               <a href="${enquiry.driveFolderUrl}" target="_blank" style="background-color: #10b981; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">
                 📁 Open Google Drive RFQ Folder ↗
               </a>
             </div>`
-          : ''
-      }
+      : ''
+    }
 
       <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
         This is an automated notification from Encon RFQ Management System.
@@ -151,14 +150,13 @@ export async function sendWelcomeUserEmail(options: SendWelcomeEmailOptions): Pr
             <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>Email Address:</strong></td>
             <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${toEmail}</td>
           </tr>
-          ${
-            temporaryPassword
-              ? `<tr>
+          ${temporaryPassword
+      ? `<tr>
                   <td style="padding: 6px 0; color: #94a3b8;"><strong>Temporary Password:</strong></td>
                   <td style="padding: 6px 0; color: #fbbf24; font-weight: bold; font-family: monospace;">${temporaryPassword}</td>
                 </tr>`
-              : ''
-          }
+      : ''
+    }
           <tr>
             <td style="padding: 6px 0; color: #94a3b8;"><strong>Assigned Role:</strong></td>
             <td style="padding: 6px 0; color: #34d399; font-weight: bold;">${roleName}</td>
