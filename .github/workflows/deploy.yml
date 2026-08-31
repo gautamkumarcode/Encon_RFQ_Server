@@ -116,9 +116,8 @@ jobs:
             GDRIVE_SHARE_WITH=${{ secrets.GDRIVE_SHARE_WITH }}
             EOF
 
-            echo "📥 Clean installing production dependencies..."
-            rm -rf node_modules
-            NODE_OPTIONS="--max-old-space-size=512" npm ci --omit=dev --no-audit --no-fund
+            echo "📥 Installing production dependencies..."
+            NODE_OPTIONS="--max-old-space-size=512" npm install --omit=dev --no-audit --no-fund
 
             echo "🔎 Checking build..."
 
