@@ -727,6 +727,8 @@ export class InboxService {
     const password = process.env.IMAP_PASSWORD || '';
     const mailbox = (process.env.IMAP_MAILBOX || 'INBOX').trim();
 
+    console.log(`✉️ [InboxService] Starting email ingest... Host=${host}:${port}, User=${user || 'NOT_SET'}, Mailbox=${mailbox}`);
+
     const ignore = ignoreSubstrings();
     let created = 0;
     let threaded = 0;
@@ -745,35 +747,43 @@ export class InboxService {
 
     const imap = new SimpleImapClient(host, port);
     try {
+      console.log(`[InboxService] Connecting to IMAP server ${host}:${port}...`);
       await imap.connect();
+      console.log(`[InboxService] IMAP connected. Logging in user ${user}...`);
       await imap.sendCommand(`LOGIN "${user}" "${password}"`);
+      console.log(`[InboxService] LOGIN successful. Selecting mailbox "${mailbox}"...`);
       await imap.sendCommand(`SELECT "${mailbox}"`);
 
       const searchCmd = includeRead() ? 'SEARCH ALL' : 'SEARCH UNSEEN';
+      console.log(`[InboxService] Running search command: ${searchCmd}...`);
       const searchRes = await imap.sendCommand(searchCmd);
       const match = searchRes.match(/\* SEARCH (.*)\r\n/);
       const msgNums = match && match[1] ? match[1].trim().split(/\s+/).filter(Boolean) : [];
 
       const fetchLimit = parseInt(process.env.IMAP_FETCH_LIMIT || '25', 10);
       const targetNums = fetchLimit > 0 && msgNums.length > fetchLimit ? msgNums.slice(-fetchLimit) : msgNums;
-      for (const num of targetNums) {
+      console.log(`[InboxService] Found ${msgNums.length} total message(s). Target batch size: ${targetNums.length}`);
+
+      for (let i = 0; i < targetNums.length; i++) {
+        const num = targetNums[i];
         try {
+          console.log(`[InboxService] Fetching message ${num} (${i + 1}/${targetNums.length})...`);
           const rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
           const parsed = parseMimeMessage(rawFetch);
           if (parsed) {
             fetchedEmails.push(parsed);
           }
-        } catch (e) {
-          console.error(`Error fetching IMAP message ${num}:`, e);
+        } catch (e: any) {
+          console.error(`❌ [InboxService] Error fetching IMAP message ${num}:`, e?.message || e);
         }
       }
     } catch (err: any) {
-      console.error('[InboxService] IMAP error:', err.message);
+      console.error('❌ [InboxService] IMAP Connection / Command Error:', err?.stack || err?.message || err);
       this.lastIngestStats = {
         ...this.lastIngestStats,
         mailbox,
         includeRead: includeRead(),
-        error: err.message,
+        error: err?.message || String(err),
         lastRunAt: new Date().toISOString(),
       };
       imap.close();

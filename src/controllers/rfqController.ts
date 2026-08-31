@@ -1797,7 +1797,9 @@ export const saveDirectory = async (req: AuthenticatedRequest, res: Response) =>
 
 export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => {
   try {
+    console.log(`📥 [syncInboxApi] Sync request triggered by user: ${req.user?.email || 'SYSTEM'}`);
     if (!InboxService.isConfigured()) {
+      console.warn('⚠️ [syncInboxApi] Inbox is not configured. Missing IMAP_USER or IMAP_PASSWORD.');
       return res.status(400).json({
         success: false,
         message: 'Inbox is not configured. Please set IMAP_USER & IMAP_PASSWORD in environment variables.',
@@ -1809,6 +1811,8 @@ export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => 
 
     const createdCount = await InboxService.ingest();
     const stats = InboxService.getLastIngestStats();
+
+    console.log(`✅ [syncInboxApi] Ingest finished. Created: ${createdCount}, Stats:`, stats);
 
     await logActivity({
       userId: req.user?.userId,
@@ -1823,8 +1827,12 @@ export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => 
       stats,
     });
   } catch (error: any) {
-    console.error('[syncInboxApi Error]:', error);
-    return res.status(500).json({ success: false, message: error.message || 'Inbox sync failed' });
+    console.error('❌ [syncInboxApi Error Stack]:', error?.stack || error?.message || error);
+    return res.status(500).json({
+      success: false,
+      message: error?.message || 'Inbox sync failed',
+      errorDetails: error?.stack || String(error),
+    });
   }
 };
 
