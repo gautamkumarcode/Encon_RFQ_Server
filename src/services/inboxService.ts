@@ -627,11 +627,24 @@ class SimpleImapClient {
           return;
         }
 
+        // Safety Memory Guard: Abort single message fetch if raw payload exceeds 15MB
+        if (this.buffer.length > 15 * 1024 * 1024) {
+          isFinished = true;
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          if (this.client) this.client.removeListener('error', onError);
+          this.buffer = '';
+          return reject(new Error('IMAP message payload exceeds max size limit (15MB)'));
+        }
+
         const tagOk = `${tag} OK`;
         const tagNo = `${tag} NO`;
         const tagBad = `${tag} BAD`;
 
-        if (this.buffer.includes(tagOk) || this.buffer.includes(tagNo) || this.buffer.includes(tagBad)) {
+        // Check tail of buffer to avoid expensive scans over multi-megabyte strings
+        const tail = this.buffer.length > 500 ? this.buffer.substring(this.buffer.length - 500) : this.buffer;
+
+        if (tail.includes(tagOk) || tail.includes(tagNo) || tail.includes(tagBad) || this.buffer.includes(tagOk)) {
           const sizeMatch = this.buffer.match(/\{(\d+)\}\r?\n/);
           if (sizeMatch && sizeMatch[1]) {
             const expectedBytes = parseInt(sizeMatch[1], 10);
