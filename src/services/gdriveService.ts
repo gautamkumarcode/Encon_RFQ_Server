@@ -126,10 +126,17 @@ async function ensureFolder(
   return { id: folderId, url: webViewLink };
 }
 
+const sharedFolderIdsCache = new Set<string>();
+
 /**
  * Share folder with team emails (ALL database users + configured env emails)
  */
 async function shareFolder(folderId: string, accessToken: string) {
+  if (!folderId || sharedFolderIdsCache.has(folderId)) {
+    return;
+  }
+  sharedFolderIdsCache.add(folderId);
+
   const config = getGDriveConfig();
   const targetEmails = new Set<string>(config.shareWithEmails.map((e) => e.toLowerCase()));
 
