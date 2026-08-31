@@ -754,7 +754,7 @@ export class InboxService {
       const match = searchRes.match(/\* SEARCH (.*)\r\n/);
       const msgNums = match && match[1] ? match[1].trim().split(/\s+/).filter(Boolean) : [];
 
-      const fetchLimit = parseInt(process.env.IMAP_FETCH_LIMIT || '500', 10);
+      const fetchLimit = parseInt(process.env.IMAP_FETCH_LIMIT || '25', 10);
       const targetNums = fetchLimit > 0 && msgNums.length > fetchLimit ? msgNums.slice(-fetchLimit) : msgNums;
       for (const num of targetNums) {
         try {
