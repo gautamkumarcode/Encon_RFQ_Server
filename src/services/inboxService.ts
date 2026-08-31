@@ -231,10 +231,8 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
         try {
           let buf: Buffer;
           if (transferEncoding === 'base64') {
-            let rawBase64 = bodyRaw.split(/--[a-zA-Z0-9_.-]+/)[0] || bodyRaw;
-            rawBase64 = rawBase64.replace(/^Content-.*$/gim, '').replace(/\s+/g, '');
-            const cleaned = rawBase64.replace(/[^A-Za-z0-9+/=]/g, '');
-            buf = Buffer.from(cleaned, 'base64');
+            const rawBase64 = bodyRaw.split(/--[a-zA-Z0-9_.-]+/)[0] || bodyRaw;
+            buf = Buffer.from(rawBase64, 'base64');
           } else {
             buf = Buffer.from(bodyRaw, 'utf8');
           }
@@ -260,7 +258,7 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
       if (transferEncoding === 'quoted-printable') {
         decoded = decodeQuotedPrintable(bodyRaw);
       } else if (transferEncoding === 'base64') {
-        decoded = Buffer.from(bodyRaw.replace(/\s+/g, ''), 'base64').toString('utf8');
+        decoded = Buffer.from(bodyRaw, 'base64').toString('utf8');
       }
 
       if (partCt === 'text/html') {
@@ -282,7 +280,7 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
   if (transferEncoding === 'quoted-printable') {
     decodedBody = decodeQuotedPrintable(targetText);
   } else if (transferEncoding === 'base64') {
-    decodedBody = Buffer.from(targetText.replace(/\s+/g, ''), 'base64').toString('utf8');
+    decodedBody = Buffer.from(targetText, 'base64').toString('utf8');
   }
 
   if (ct === 'text/html') result.html = decodedBody;
@@ -334,10 +332,9 @@ export function extractMimeWithAttachments(rawMime: string): { body: string; att
         const sepIdx = afterHeader.search(/\r?\n\r?\n/);
         if (sepIdx !== -1) {
           const payloadSection = afterHeader.substring(sepIdx + 2).split(/\r?\n\r?\n/)[0] || '';
-          const rawB64 = payloadSection.replace(/[^A-Za-z0-9+/=]/g, '');
-          if (rawB64.length > 40) {
+          if (payloadSection.length > 40) {
             try {
-              const buf = Buffer.from(rawB64, 'base64');
+              const buf = Buffer.from(payloadSection, 'base64');
               if (buf.length > 0) {
                 let ct = 'application/octet-stream';
                 const fnLower = fn.toLowerCase();
