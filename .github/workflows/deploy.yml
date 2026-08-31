@@ -118,7 +118,7 @@ jobs:
 
             echo "📥 Installing production dependencies..."
 
-            npm ci --omit=dev
+            NODE_OPTIONS="--max-old-space-size=512" npm ci --omit=dev --no-audit --no-fund
 
             echo "🔎 Checking build..."
 
