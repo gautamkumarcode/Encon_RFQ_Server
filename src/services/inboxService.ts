@@ -554,28 +554,82 @@ class SimpleImapClient {
 
   public async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
+      let isResolved = false;
+      const timeout = setTimeout(() => {
+        if (!isResolved) {
+          isResolved = true;
+          if (this.client) this.client.destroy();
+          reject(new Error('IMAP connection timeout (15s)'));
+        }
+      }, 15000);
+
       this.client = tls.connect(this.port, this.host, { rejectUnauthorized: false }, () => {
-        resolve();
+        if (!isResolved) {
+          isResolved = true;
+          clearTimeout(timeout);
+          resolve();
+        }
       });
+
       this.client.on('data', (chunk) => {
         this.buffer += chunk.toString('utf8');
       });
-      this.client.on('error', (err) => reject(err));
+
+      this.client.on('error', (err) => {
+        if (!isResolved) {
+          isResolved = true;
+          clearTimeout(timeout);
+          reject(err);
+        }
+      });
     });
   }
 
-  public async sendCommand(cmd: string): Promise<string> {
+  public async sendCommand(cmd: string, timeoutMs = 25000): Promise<string> {
     const tag = `A${this.tagIndex++}`;
     const fullCmd = `${tag} ${cmd}\r\n`;
     this.buffer = '';
 
     return new Promise((resolve, reject) => {
-      if (!this.client) return reject(new Error('IMAP Client not connected'));
+      if (!this.client || this.client.destroyed) {
+        return reject(new Error('IMAP Client not connected'));
+      }
+
+      let isFinished = false;
+
+      const timer = setTimeout(() => {
+        if (!isFinished) {
+          isFinished = true;
+          clearInterval(checkInterval);
+          reject(new Error(`IMAP command timeout (${cmd.substring(0, 30)})`));
+        }
+      }, timeoutMs);
+
+      const onError = (err: Error) => {
+        if (!isFinished) {
+          isFinished = true;
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          reject(err);
+        }
+      };
+
+      this.client.once('error', onError);
       this.client.write(fullCmd, (err) => {
-        if (err) return reject(err);
+        if (err && !isFinished) {
+          isFinished = true;
+          clearTimeout(timer);
+          clearInterval(checkInterval);
+          reject(err);
+        }
       });
 
       const checkInterval = setInterval(() => {
+        if (isFinished) {
+          clearInterval(checkInterval);
+          return;
+        }
+
         const tagOk = `${tag} OK`;
         const tagNo = `${tag} NO`;
         const tagBad = `${tag} BAD`;
@@ -591,7 +645,13 @@ class SimpleImapClient {
             }
           }
 
+          isFinished = true;
+          clearTimeout(timer);
           clearInterval(checkInterval);
+          if (this.client) {
+            this.client.removeListener('error', onError);
+          }
+
           const response = this.buffer;
           this.buffer = '';
           if (response.includes(tagOk)) {
@@ -607,9 +667,12 @@ class SimpleImapClient {
   public close() {
     if (this.client) {
       try {
-        this.sendCommand('LOGOUT').catch(() => { });
-        this.client.end();
-      } catch (e) { }
+        if (!this.client.destroyed) {
+          this.sendCommand('LOGOUT', 2000).catch(() => {});
+          this.client.end();
+          this.client.destroy();
+        }
+      } catch (e) {}
     }
   }
 }

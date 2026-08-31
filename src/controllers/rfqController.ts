@@ -1804,6 +1804,9 @@ export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => 
       });
     }
 
+    req.setTimeout(120000);
+    res.setTimeout(120000);
+
     const createdCount = await InboxService.ingest();
     const stats = InboxService.getLastIngestStats();
 
@@ -1812,7 +1815,7 @@ export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => 
       userEmail: req.user?.email || 'SYSTEM',
       action: 'INBOX_SYNC',
       details: stats,
-    });
+    }).catch(() => {});
 
     return res.json({
       success: true,
@@ -1820,7 +1823,8 @@ export const syncInboxApi = async (req: AuthenticatedRequest, res: Response) => 
       stats,
     });
   } catch (error: any) {
-    return res.status(500).json({ success: false, message: error.message });
+    console.error('[syncInboxApi Error]:', error);
+    return res.status(500).json({ success: false, message: error.message || 'Inbox sync failed' });
   }
 };
 

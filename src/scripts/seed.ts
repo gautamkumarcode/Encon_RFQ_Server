@@ -79,7 +79,7 @@ export async function seedDatabase() {
 
   const app = await Application.findOneAndUpdate({ code: appData.code }, appData, { upsert: true, new: true });
 
-  // 4. Target Users (ADMIN ONLY)
+  // 4. Target Admin User
   const passwordHash = await bcrypt.hash('Password12', 10);
 
   const targetUsers = [
