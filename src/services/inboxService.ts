@@ -770,14 +770,30 @@ export class InboxService {
       const match = searchRes.match(/\* SEARCH (.*)\r\n/);
       const msgNums = match && match[1] ? match[1].trim().split(/\s+/).filter(Boolean) : [];
 
-      const fetchLimit = parseInt(process.env.IMAP_FETCH_LIMIT || '25', 10);
+      const defaultLimit = curatedMailbox() ? 0 : 50;
+      const fetchLimit = process.env.IMAP_FETCH_LIMIT !== undefined 
+        ? parseInt(process.env.IMAP_FETCH_LIMIT, 10) 
+        : defaultLimit;
+
       const targetNums = fetchLimit > 0 && msgNums.length > fetchLimit ? msgNums.slice(-fetchLimit) : msgNums;
-      console.log(`[InboxService] Found ${msgNums.length} total message(s). Target batch size: ${targetNums.length}`);
+      console.log(`[InboxService] Found ${msgNums.length} total message(s). Target batch size: ${targetNums.length} (Limit: ${fetchLimit === 0 ? 'UNLIMITED' : fetchLimit})`);
 
       for (let i = 0; i < targetNums.length; i++) {
         const num = targetNums[i];
         try {
-          console.log(`[InboxService] Fetching message ${num} (${i + 1}/${targetNums.length})...`);
+          // Pre-check message size to prevent Linux OOM SIGKILL on giant attachments
+          const sizeRes = await imap.sendCommand(`FETCH ${num} (RFC822.SIZE)`).catch(() => '');
+          const sizeMatch = sizeRes.match(/RFC822\.SIZE\s+(\d+)/i);
+          const messageSizeBytes = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
+
+          const maxAllowedBytes = 10 * 1024 * 1024; // 10 MB RAM limit for EC2
+          if (messageSizeBytes > maxAllowedBytes) {
+            console.warn(`⚠️ [InboxService] Skipping message ${num} (${i + 1}/${targetNums.length}) - Size ${(messageSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds 10MB server limit`);
+            skippedNoise++;
+            continue;
+          }
+
+          console.log(`[InboxService] Fetching message ${num} (${i + 1}/${targetNums.length}) [${messageSizeBytes ? (messageSizeBytes / 1024).toFixed(0) + 'KB' : 'Size unknown'}]...`);
           const rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
           const parsed = parseMimeMessage(rawFetch);
           if (parsed) {

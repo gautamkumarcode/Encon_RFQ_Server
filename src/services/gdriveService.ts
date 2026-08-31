@@ -17,7 +17,10 @@ export function getGDriveConfig() {
   const clientId = (process.env.GDRIVE_OAUTH_CLIENT_ID || '').trim();
   const clientSecret = (process.env.GDRIVE_OAUTH_CLIENT_SECRET || '').trim();
   const refreshToken = (process.env.GDRIVE_OAUTH_REFRESH_TOKEN || '').trim();
-  const parentFolderId = (process.env.GDRIVE_PARENT_FOLDER_ID || '').trim();
+  let parentFolderId = (process.env.GDRIVE_PARENT_FOLDER_ID || '').trim();
+  if (parentFolderId === '.' || !/^[a-zA-Z0-9_-]+$/.test(parentFolderId)) {
+    parentFolderId = '';
+  }
   const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQ Tracker').trim();
   const shareWithEmails = (process.env.GDRIVE_SHARE_WITH || '').split(',').map((e) => e.trim()).filter(Boolean);
 
