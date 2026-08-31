@@ -1,0 +1,78 @@
+name: 🚀 Deploy Backend to AWS EC2
+
+on:
+  push:
+    branches: [main, master]
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Install dependencies
+        run: npm ci
+
+      # 🧩 Create clean archive (NO node_modules, NO uploads)
+      - name: Create deployment archive
+        run: git archive --format=tar.gz HEAD -o deploy.tar.gz
+
+      # 📤 Upload bundle to AWS EC2
+      - name: Upload backend bundle to EC2
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          source: "deploy.tar.gz"
+          target: "${{ secrets.APP_DIR }}"
+          overwrite: true
+          rm: false
+
+      # 🚀 Extract archive, write .env, build TypeScript & restart PM2
+      - name: Deploy & Restart Backend PM2
+        uses: appleboy/ssh-action@v0.1.7
+        with:
+          host: ${{ secrets.EC2_HOST }}
+          username: ${{ secrets.EC2_USER }}
+          key: ${{ secrets.EC2_KEY }}
+          script: |
+            cd ${{ secrets.APP_DIR }}
+            tar -xzf deploy.tar.gz
+            rm deploy.tar.gz
+
+            # Create/update .env file with GitHub secrets
+            cat > .env << 'EOF'
+            PORT=${{ secrets.PORT || '5000' }}
+            NODE_ENV=production
+            MONGODB_URI=${{ secrets.MONGODB_URI }}
+            JWT_SECRET=${{ secrets.JWT_SECRET }}
+            JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+            FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+            IMAP_HOST=${{ secrets.IMAP_HOST }}
+            IMAP_PORT=${{ secrets.IMAP_PORT }}
+            IMAP_USER=${{ secrets.IMAP_USER }}
+            IMAP_PASSWORD=${{ secrets.IMAP_PASSWORD }}
+            IMAP_MAILBOX=${{ secrets.IMAP_MAILBOX }}
+            IMAP_POLL_SECONDS=${{ secrets.IMAP_POLL_SECONDS || '300' }}
+            GDRIVE_OAUTH_CLIENT_ID=${{ secrets.GDRIVE_OAUTH_CLIENT_ID }}
+            GDRIVE_OAUTH_CLIENT_SECRET=${{ secrets.GDRIVE_OAUTH_CLIENT_SECRET }}
+            GDRIVE_OAUTH_REFRESH_TOKEN=${{ secrets.GDRIVE_OAUTH_REFRESH_TOKEN }}
+            GDRIVE_PARENT_FOLDER_ID=${{ secrets.GDRIVE_PARENT_FOLDER_ID }}
+            GDRIVE_PARENT_FOLDER_NAME=${{ secrets.GDRIVE_PARENT_FOLDER_NAME }}
+            GDRIVE_SHARE_WITH=${{ secrets.GDRIVE_SHARE_WITH }}
+            EOF
+
+            npm install --production
+            npm run build
+            pm2 restart backend || pm2 start dist/server.js --name backend
+            pm2 save

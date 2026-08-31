@@ -1,0 +1,15 @@
+services:
+  - type: web
+    name: encon-backend
+    env: node
+    buildCommand: npm install && npx prisma generate && npm run build
+    startCommand: npx prisma db push && npx ts-node prisma/seed.ts && npm start
+    envVars:
+      - key: PORT
+        value: 5000
+      - key: NODE_ENV
+        value: production
+      - key: JWT_SECRET
+        value: encon_thermal_secret_key_super_secure_2026
+      - key: JWT_REFRESH_SECRET
+        value: encon_thermal_refresh_key_super_secure_2026
