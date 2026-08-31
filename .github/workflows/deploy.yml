@@ -10,69 +10,128 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
+      # ─────────────────────────────────────
+      # 1. Checkout
+      # ─────────────────────────────────────
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Setup Node.js 20
+      # ─────────────────────────────────────
+      # 2. Setup Node.js
+      # ─────────────────────────────────────
+      - name: Setup Node.js 22
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
+          cache: npm
 
+      # ─────────────────────────────────────
+      # 3. Install dependencies
+      # ─────────────────────────────────────
       - name: Install dependencies
         run: npm ci
 
-      # 🧩 Create clean archive (NO node_modules, NO uploads)
-      - name: Create deployment archive
-        run: git archive --format=tar.gz HEAD -o deploy.tar.gz
+      # ─────────────────────────────────────
+      # 4. Build TypeScript on GitHub
+      # ─────────────────────────────────────
+      - name: Build backend
+        run: npm run build
 
-      # 📤 Upload bundle to AWS EC2
+      # ─────────────────────────────────────
+      # 5. Create deployment package
+      # ─────────────────────────────────────
+      - name: Create deployment archive
+        run: |
+          mkdir deploy
+
+          cp -r dist deploy/
+          cp package.json deploy/
+          cp package-lock.json deploy/
+
+          tar -czf backend.tar.gz -C deploy .
+
+      # ─────────────────────────────────────
+      # 6. Upload to EC2
+      # ─────────────────────────────────────
       - name: Upload backend bundle to EC2
         uses: appleboy/scp-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          source: "deploy.tar.gz"
+          source: "backend.tar.gz"
           target: "${{ secrets.APP_DIR }}"
           overwrite: true
-          rm: false
 
-      # 🚀 Extract archive, write .env, build TypeScript & restart PM2
+      # ─────────────────────────────────────
+      # 7. Deploy on EC2
+      # ─────────────────────────────────────
       - name: Deploy & Restart Backend PM2
         uses: appleboy/ssh-action@v0.1.7
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER }}
           key: ${{ secrets.EC2_KEY }}
-          script: |
-            cd ${{ secrets.APP_DIR }}
-            tar -xzf deploy.tar.gz
-            rm deploy.tar.gz
 
-            # Create/update .env file with GitHub secrets
+          script: |
+            set -e
+
+            echo "🚀 Starting backend deployment..."
+
+            cd ${{ secrets.APP_DIR }}
+
+            echo "📦 Extracting backend..."
+
+            tar -xzf backend.tar.gz
+            rm backend.tar.gz
+
+            echo "🔐 Creating .env..."
+
             cat > .env << 'EOF'
             PORT=${{ secrets.PORT || '5000' }}
             NODE_ENV=production
+
             MONGODB_URI=${{ secrets.MONGODB_URI }}
+
             JWT_SECRET=${{ secrets.JWT_SECRET }}
             JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
+
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
+
             IMAP_HOST=${{ secrets.IMAP_HOST }}
             IMAP_PORT=${{ secrets.IMAP_PORT }}
             IMAP_USER=${{ secrets.IMAP_USER }}
             IMAP_PASSWORD=${{ secrets.IMAP_PASSWORD }}
             IMAP_MAILBOX=${{ secrets.IMAP_MAILBOX }}
             IMAP_POLL_SECONDS=${{ secrets.IMAP_POLL_SECONDS || '300' }}
+
             GDRIVE_OAUTH_CLIENT_ID=${{ secrets.GDRIVE_OAUTH_CLIENT_ID }}
             GDRIVE_OAUTH_CLIENT_SECRET=${{ secrets.GDRIVE_OAUTH_CLIENT_SECRET }}
             GDRIVE_OAUTH_REFRESH_TOKEN=${{ secrets.GDRIVE_OAUTH_REFRESH_TOKEN }}
+
             GDRIVE_PARENT_FOLDER_ID=${{ secrets.GDRIVE_PARENT_FOLDER_ID }}
             GDRIVE_PARENT_FOLDER_NAME=${{ secrets.GDRIVE_PARENT_FOLDER_NAME }}
             GDRIVE_SHARE_WITH=${{ secrets.GDRIVE_SHARE_WITH }}
             EOF
 
-            npm install --production
-            npm run build
-            pm2 restart backend || pm2 start dist/server.js --name backend
+            echo "📥 Installing production dependencies..."
+
+            npm ci --omit=dev
+
+            echo "🔎 Checking build..."
+
+            test -f dist/server.js
+
+            echo "🚀 Restarting PM2..."
+
+            pm2 describe backend > /dev/null 2>&1 \
+              && pm2 restart backend --update-env \
+              || pm2 start dist/server.js --name backend
+
             pm2 save
+
+            echo "✅ Backend deployment completed!"
+
+            pm2 status
