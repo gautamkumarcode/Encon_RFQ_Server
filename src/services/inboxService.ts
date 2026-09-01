@@ -825,9 +825,8 @@ class SimpleImapClient {
 					clearInterval(checkInterval);
 					return;
 				}
-
-				// Safety Memory Guard: Abort single message fetch if raw payload exceeds 15MB
-				if (this.buffer.length > 15 * 1024 * 1024) {
+				// Safety Memory Guard: Abort single message fetch if raw payload exceeds 50MB
+				if (this.buffer.length > 50 * 1024 * 1024) {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
@@ -837,7 +836,7 @@ class SimpleImapClient {
 					}
 					this.buffer = "";
 					return reject(
-						new Error("IMAP message payload exceeds max size limit (15MB)"),
+						new Error("IMAP message payload exceeds max size limit (50MB)"),
 					);
 				}
 
@@ -972,9 +971,7 @@ export class InboxService {
 		const processedDb: any[] = await ProcessedMessage.find()
 			.select("messageId")
 			.lean();
-		const enquiriesDb: any[] = await Enquiry.find({
-			sourceMessageId: { $ne: "" },
-		})
+		const enquiriesDb: any[] = await Enquiry.find({ sourceMessageId: { $ne: "" } })
 			.select("sourceMessageId")
 			.lean();
 
@@ -1106,23 +1103,23 @@ export class InboxService {
 					if (messageSizeBytes > maxAllowedBytes) {
 						const sizeMb = (messageSizeBytes / (1024 * 1024)).toFixed(1);
 						console.warn(
-							`⚠️ [InboxService] Message ${num} (${i + 1}/${uniqueNewNums.length}) size (${sizeMb} MB) exceeds ${maxMb} MB limit. Fetching header and text body only (omitting large attachments)...`,
+							`⚠️ [InboxService] Message ${num} (${i + 1}/${uniqueNewNums.length}) size (${sizeMb} MB) exceeds ${maxMb} MB limit. Fetching header only (omitting large attachments)...`,
 						);
 						try {
 							await imap.ensureConnected(user, password, mailbox);
 							const rawFetch = await imap.sendCommand(
-								`FETCH ${num} (BODY.PEEK[HEADER] BODY.PEEK[TEXT])`,
+								`FETCH ${num} (BODY.PEEK[HEADER])`,
 							);
 							const parsed = parseMimeMessage(rawFetch);
 							if (parsed) {
 								parsed.attachments = []; // Skip downloading heavy binary attachments
-								const note = `\n\n⚠️ [System Note: Attachments were not auto-downloaded because the total email size (${sizeMb} MB) exceeded the ${maxMb} MB limit. You can manually upload attachment files to this RFQ.]`;
-								parsed.body = (parsed.body || "").trim() + note;
+								const note = `[RFQ Email Received from ${parsed.fromEmail || parsed.fromName || "Email Sender"}]\nSubject: ${parsed.subject || "(no subject)"}\n\n⚠️ [System Note: Attachments were not auto-downloaded because the total email size (${sizeMb} MB) exceeded the ${maxMb} MB limit. You can manually upload attachment files to this RFQ.]`;
+								parsed.body = note;
 								fetchedEmails.push(parsed);
 							}
 						} catch (lightErr: any) {
 							console.error(
-								`❌ [InboxService] Error fetching lightweight content for message ${num}:`,
+								`❌ [InboxService] Error fetching header content for message ${num}:`,
 								lightErr?.message || lightErr,
 							);
 						}
