@@ -9,7 +9,8 @@
     "start": "npm run build && node dist/server.js",
     "dev": "npx ts-node-dev --respawn --transpile-only src/server.ts",
     "seed": "ts-node src/scripts/seed.ts",
-    "reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts"
+    "reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
+    "clear-rfq-data": "ts-node src/utils/clearRfqData.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
