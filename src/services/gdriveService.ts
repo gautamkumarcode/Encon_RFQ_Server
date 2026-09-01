@@ -209,11 +209,13 @@ function resolveMimeType(filename: string, givenMime: string): string {
     case 'pdf':
       return 'application/pdf';
     case 'xlsx':
-    case 'xls':
       return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    case 'xls':
+      return 'application/vnd.ms-excel';
     case 'docx':
-    case 'doc':
       return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+    case 'doc':
+      return 'application/msword';
     case 'png':
       return 'image/png';
     case 'jpg':
@@ -234,16 +236,15 @@ async function uploadFileToFolder(
   buffer: Buffer,
   accessToken: string
 ) {
-  const boundary = '-------314159265358979323846';
+  const boundary = `-------boundary_${Date.now()}_${Math.random().toString(36).substring(2)}`;
   const finalMime = resolveMimeType(filename, mimeType);
 
   const metadataStr = JSON.stringify({
     name: filename,
     parents: [folderId],
-    mimeType: finalMime,
   });
 
-  const header = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\nContent-Transfer-Encoding: binary\r\n\r\n`;
+  const header = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\n\r\n`;
   const footer = `\r\n--${boundary}--`;
 
   const multipartRequestBody = Buffer.concat([
@@ -256,9 +257,10 @@ async function uploadFileToFolder(
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': `multipart/related; boundary=${boundary}`,
-      'Content-Length': multipartRequestBody.length,
     },
     params: { supportsAllDrives: true, ignoreDefaultVisibility: true },
+    maxBodyLength: Infinity,
+    maxContentLength: Infinity,
   });
 }
 

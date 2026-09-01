@@ -317,7 +317,7 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 				try {
 					let buf: Buffer;
 					if (transferEncoding === "base64") {
-						const rawBase64 = bodyRaw.split(/--[a-zA-Z0-9_.-]+/)[0] || bodyRaw;
+						const rawBase64 = bodyRaw.split(/\r?\n--/)[0] || bodyRaw;
 						const cleanBase64 = rawBase64.replace(/[^A-Za-z0-9+/=]/g, "");
 						buf = Buffer.from(cleanBase64, "base64");
 					} else if (transferEncoding === "quoted-printable") {
@@ -764,7 +764,7 @@ class SimpleImapClient {
 		}
 	}
 
-	public async sendCommand(cmd: string, timeoutMs = 25000): Promise<string> {
+	public async sendCommand(cmd: string, timeoutMs = 60000): Promise<string> {
 		const tag = `A${this.tagIndex++}`;
 		const fullCmd = `${tag} ${cmd}\r\n`;
 		this.buffer = "";
@@ -844,33 +844,19 @@ class SimpleImapClient {
 					);
 				}
 
-				const tagOkPattern = new RegExp(`(?:^|\\r?\\n)${tag}\\s+OK\\b`, "i");
-				const statusRegex = new RegExp(`(?:^|\\r?\\n)${tag}\\s+(OK|NO|BAD)\\b`, "i");
+				const trimmedEnd = this.buffer.trimEnd();
 				const tailStr =
-					this.buffer.length > 1000
-						? this.buffer.substring(this.buffer.length - 1000)
-						: this.buffer;
+					trimmedEnd.length > 1000
+						? trimmedEnd.substring(trimmedEnd.length - 1000)
+						: trimmedEnd;
 
-				const isResponseComplete =
-					statusRegex.test(tailStr) || statusRegex.test(this.buffer.trim());
+				// Strictly match tagged completion line (e.g., "\r\nA1 OK ...") at the END of the response
+				const endStatusRegex = new RegExp(
+					`(?:^|\\r?\\n)${tag}\\s+(OK|NO|BAD)\\b[^\\r\\n]*$`,
+					"i",
+				);
 
-				if (isResponseComplete) {
-					// Verify literal size hint if present
-					const sizeMatches = [...this.buffer.matchAll(/\{(\d+)\}\r?\n/g)];
-					if (sizeMatches.length > 0) {
-						const lastMatch = sizeMatches[sizeMatches.length - 1];
-						const expectedBytes = parseInt(lastMatch[1], 10);
-						const lastMatchIdx = (lastMatch.index || 0) + lastMatch[0].length;
-						const bytesReceivedAfterLiteral = this.buffer.length - lastMatchIdx;
-
-						if (
-							bytesReceivedAfterLiteral < expectedBytes &&
-							!tagOkPattern.test(tailStr)
-						) {
-							return;
-						}
-					}
-
+				if (endStatusRegex.test(tailStr) || endStatusRegex.test(trimmedEnd)) {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
@@ -881,7 +867,12 @@ class SimpleImapClient {
 
 					const response = this.buffer;
 					this.buffer = "";
-					if (tagOkPattern.test(response) || response.includes(`${tag} OK`)) {
+
+					const tagOkEndRegex = new RegExp(
+						`(?:^|\\r?\\n)${tag}\\s+OK\\b[^\\r\\n]*$`,
+						"i",
+					);
+					if (tagOkEndRegex.test(tailStr) || tagOkEndRegex.test(trimmedEnd)) {
 						resolve(response);
 					} else {
 						reject(new Error(`IMAP Error: ${response.substring(0, 300)}`));
@@ -1133,10 +1124,10 @@ export class InboxService {
 
 						let rawFetch = "";
 						try {
-							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`, 90000);
 						} catch (fetchErr) {
 							await imap.ensureConnected(user, password, mailbox);
-							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`, 90000);
 						}
 
 						parsed = parseMimeMessage(rawFetch);
