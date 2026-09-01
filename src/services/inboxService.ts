@@ -448,11 +448,11 @@ export function extractMimeWithAttachments(rawMime: string): {
 				if (exists) continue;
 
 				const matchIdx = fnMatch.index;
-				const afterHeader = text.substring(matchIdx, matchIdx + 50000);
+				const afterHeader = text.substring(matchIdx, matchIdx + 20000000);
 				const sepIdx = afterHeader.search(/\r?\n\r?\n/);
 				if (sepIdx !== -1) {
 					const payloadSection =
-						afterHeader.substring(sepIdx + 2).split(/--[a-zA-Z0-9_.-]+/)[0] || "";
+						afterHeader.substring(sepIdx + 2).split(/\r?\n--/)[0] || "";
 					const cleanBase64 = payloadSection.replace(/[^A-Za-z0-9+/=]/g, "");
 					if (cleanBase64.length > 40) {
 						try {
@@ -668,7 +668,7 @@ function parseMimeMessage(raw: string): ParsedEmail {
 		const inReplyTo = decodeHeader(headers["in-reply-to"] || "").trim();
 		const references = decodeHeader(headers["references"] || "").trim();
 
-		const { body, attachments } = extractMimeWithAttachments(rawBody);
+		const { body, attachments } = extractMimeWithAttachments(raw);
 
 		return {
 			messageId,
