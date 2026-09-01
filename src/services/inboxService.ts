@@ -844,30 +844,28 @@ class SimpleImapClient {
 					);
 				}
 
-				const tagOk = `${tag} OK`;
-				const tagNo = `${tag} NO`;
-				const tagBad = `${tag} BAD`;
-
-				// Check tail of buffer to avoid expensive scans over multi-megabyte strings
-				const tail =
-					this.buffer.length > 500
-						? this.buffer.substring(this.buffer.length - 500)
+				const tagOkPattern = new RegExp(`(?:^|\\r?\\n)${tag}\\s+OK\\b`, "i");
+				const statusRegex = new RegExp(`(?:^|\\r?\\n)${tag}\\s+(OK|NO|BAD)\\b`, "i");
+				const tailStr =
+					this.buffer.length > 1000
+						? this.buffer.substring(this.buffer.length - 1000)
 						: this.buffer;
 
-				if (
-					tail.includes(tagOk) ||
-					tail.includes(tagNo) ||
-					tail.includes(tagBad) ||
-					this.buffer.includes(tagOk)
-				) {
-					const sizeMatch = this.buffer.match(/\{(\d+)\}\r?\n/);
-					if (sizeMatch && sizeMatch[1]) {
-						const expectedBytes = parseInt(sizeMatch[1], 10);
-						const headerEndIdx = this.buffer.indexOf("\r\n") + 2;
-						const currentBytes = this.buffer.length - headerEndIdx;
+				const isResponseComplete =
+					statusRegex.test(tailStr) || statusRegex.test(this.buffer.trim());
+
+				if (isResponseComplete) {
+					// Verify literal size hint if present
+					const sizeMatches = [...this.buffer.matchAll(/\{(\d+)\}\r?\n/g)];
+					if (sizeMatches.length > 0) {
+						const lastMatch = sizeMatches[sizeMatches.length - 1];
+						const expectedBytes = parseInt(lastMatch[1], 10);
+						const lastMatchIdx = (lastMatch.index || 0) + lastMatch[0].length;
+						const bytesReceivedAfterLiteral = this.buffer.length - lastMatchIdx;
+
 						if (
-							currentBytes < expectedBytes &&
-							!this.buffer.trim().endsWith(tagOk)
+							bytesReceivedAfterLiteral < expectedBytes &&
+							!tagOkPattern.test(tailStr)
 						) {
 							return;
 						}
@@ -883,7 +881,7 @@ class SimpleImapClient {
 
 					const response = this.buffer;
 					this.buffer = "";
-					if (response.includes(tagOk)) {
+					if (tagOkPattern.test(response) || response.includes(`${tag} OK`)) {
 						resolve(response);
 					} else {
 						reject(new Error(`IMAP Error: ${response.substring(0, 300)}`));
