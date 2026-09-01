@@ -1038,13 +1038,13 @@ export class InboxService {
 				`[InboxService] After envelope dedup: ${uniqueNewNums.length} new message(s) to download (skipped ${skippedKnown} already known).`,
 			);
 
-			// ── Phase 2: Download full bodies only for genuinely new messages ─────────
-			const maxAllowedBytes = 10 * 1024 * 1024; // 10 MB per message
+			const maxMb = parseInt(process.env.IMAP_MAX_FILE_SIZE_MB || "15", 10);
+			const maxAllowedBytes = maxMb * 1024 * 1024;
 
 			for (let i = 0; i < uniqueNewNums.length; i++) {
 				const num = uniqueNewNums[i];
 				try {
-					// Pre-check size to avoid OOM on large attachments
+					// Pre-check size
 					const sizeRes = await imap
 						.sendCommand(`FETCH ${num} (RFC822.SIZE)`)
 						.catch(() => "");
@@ -1052,10 +1052,27 @@ export class InboxService {
 					const messageSizeBytes = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
 
 					if (messageSizeBytes > maxAllowedBytes) {
+						const sizeMb = (messageSizeBytes / (1024 * 1024)).toFixed(1);
 						console.warn(
-							`⚠️ [InboxService] Skipping message ${num} (${i + 1}/${uniqueNewNums.length}) - Size ${(messageSizeBytes / 1024 / 1024).toFixed(1)}MB exceeds 10MB limit`,
+							`⚠️ [InboxService] Message ${num} (${i + 1}/${uniqueNewNums.length}) size (${sizeMb} MB) exceeds ${maxMb} MB limit. Fetching header and text body only (omitting large attachments)...`,
 						);
-						skippedNoise++;
+						try {
+							const rawFetch = await imap.sendCommand(
+								`FETCH ${num} (BODY.PEEK[HEADER] BODY.PEEK[TEXT])`,
+							);
+							const parsed = parseMimeMessage(rawFetch);
+							if (parsed) {
+								parsed.attachments = []; // Skip downloading heavy binary attachments
+								const note = `\n\n⚠️ [System Note: Attachments were not auto-downloaded because the total email size (${sizeMb} MB) exceeded the ${maxMb} MB limit. You can manually upload attachment files to this RFQ.]`;
+								parsed.body = (parsed.body || "").trim() + note;
+								fetchedEmails.push(parsed);
+							}
+						} catch (lightErr: any) {
+							console.error(
+								`❌ [InboxService] Error fetching lightweight content for message ${num}:`,
+								lightErr?.message || lightErr,
+							);
+						}
 						continue;
 					}
 
