@@ -1078,7 +1078,6 @@ export class InboxService {
 				}
 			}
 
-			// Deduplicate (a seq may have been added from both the fallback and normal path)
 			const uniqueNewNums = [...new Set(newMsgNums)];
 			console.log(
 				`[InboxService] After envelope dedup: ${uniqueNewNums.length} new message(s) to download (skipped ${skippedKnown} already known).`,
@@ -1086,13 +1085,14 @@ export class InboxService {
 
 			const maxMb = parseInt(process.env.IMAP_MAX_FILE_SIZE_MB || "15", 10);
 			const maxAllowedBytes = maxMb * 1024 * 1024;
+			const threadsMap = new Map<string, any>();
+			let downloaded = 0;
 
 			for (let i = 0; i < uniqueNewNums.length; i++) {
 				const num = uniqueNewNums[i];
 				try {
 					await imap.ensureConnected(user, password, mailbox);
 
-					// Pre-check size with auto-reconnect fallback
 					let sizeRes = "";
 					try {
 						sizeRes = await imap.sendCommand(`FETCH ${num} (RFC822.SIZE)`);
@@ -1104,6 +1104,8 @@ export class InboxService {
 					const sizeMatch = sizeRes.match(/RFC822\.SIZE\s+(\d+)/i);
 					const messageSizeBytes = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
 
+					let parsed: ParsedEmail | null = null;
+
 					if (messageSizeBytes > maxAllowedBytes) {
 						const sizeMb = (messageSizeBytes / (1024 * 1024)).toFixed(1);
 						console.warn(
@@ -1114,12 +1116,11 @@ export class InboxService {
 							const rawFetch = await imap.sendCommand(
 								`FETCH ${num} (BODY.PEEK[HEADER])`,
 							);
-							const parsed = parseMimeMessage(rawFetch);
+							parsed = parseMimeMessage(rawFetch);
 							if (parsed) {
-								parsed.attachments = []; // Skip downloading heavy binary attachments
+								parsed.attachments = [];
 								const note = `[RFQ Email Received from ${parsed.fromEmail || parsed.fromName || "Email Sender"}]\nSubject: ${parsed.subject || "(no subject)"}\n\n⚠️ [System Note: Attachments were not auto-downloaded because the total email size (${sizeMb} MB) exceeded the ${maxMb} MB limit. You can manually upload attachment files to this RFQ.]`;
 								parsed.body = note;
-								fetchedEmails.push(parsed);
 							}
 						} catch (lightErr: any) {
 							console.error(
@@ -1127,25 +1128,31 @@ export class InboxService {
 								lightErr?.message || lightErr,
 							);
 						}
-						continue;
+					} else {
+						console.log(
+							`[InboxService] Downloading message ${num} (${i + 1}/${uniqueNewNums.length}) [${messageSizeBytes ? (messageSizeBytes / 1024).toFixed(0) + "KB" : "size unknown"}]...`,
+						);
+
+						let rawFetch = "";
+						try {
+							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+						} catch (fetchErr) {
+							await imap.ensureConnected(user, password, mailbox);
+							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+						}
+
+						parsed = parseMimeMessage(rawFetch);
 					}
 
-					console.log(
-						`[InboxService] Downloading message ${num} (${i + 1}/${uniqueNewNums.length}) [${messageSizeBytes ? (messageSizeBytes / 1024).toFixed(0) + "KB" : "size unknown"}]...`,
-					);
-
-					let rawFetch = "";
-					try {
-						rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
-					} catch (fetchErr) {
-						// Socket dropped mid-download — reconnect & retry once
-						await imap.ensureConnected(user, password, mailbox);
-						rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
-					}
-
-					const parsed = parseMimeMessage(rawFetch);
 					if (parsed) {
-						fetchedEmails.push(parsed);
+						downloaded++;
+						const res = await this._processSingleEmail(parsed, knownIds, threadsMap, ignore);
+						if (res.created) created++;
+						if (res.threaded) threaded++;
+						if (res.skippedNoise) skippedNoise++;
+
+						parsed.attachments = [];
+						parsed = null;
 					}
 				} catch (e: any) {
 					console.error(
@@ -1154,6 +1161,21 @@ export class InboxService {
 					);
 				}
 			}
+
+			this.lastIngestStats = {
+				mailbox,
+				includeRead: includeRead(),
+				matched: candidateNums.length,
+				downloaded,
+				skippedKnown,
+				skippedNoise,
+				created,
+				threaded,
+				lastRunAt: new Date().toISOString(),
+			};
+
+			console.log("[InboxService] Ingest completed:", this.lastIngestStats);
+			return created;
 		} catch (err: any) {
 			console.error(
 				"❌ [InboxService] IMAP Connection / Command Error:",
@@ -1171,247 +1193,151 @@ export class InboxService {
 		} finally {
 			imap.close();
 		}
+	}
 
-		const threadsMap = new Map<string, any>();
+	private static async _processSingleEmail(
+		m: ParsedEmail,
+		knownIds: Set<string>,
+		threadsMap: Map<string, any>,
+		ignore: string[],
+	): Promise<{ created: boolean; threaded: boolean; skippedNoise: boolean }> {
+		const mid = m.messageId;
+		if (mid && knownIds.has(mid)) {
+			return { created: false, threaded: false, skippedNoise: false };
+		}
 
-		for (const m of fetchedEmails) {
-			const mid = m.messageId;
-			if (mid && knownIds.has(mid)) {
-				skippedKnown++;
-				continue;
-			}
+		if ((m.subject || "").startsWith(LABEL_REMINDER_SUBJECT)) {
+			return { created: false, threaded: false, skippedNoise: true };
+		}
 
-			if ((m.subject || "").startsWith(LABEL_REMINDER_SUBJECT)) {
-				skippedNoise++;
-				continue;
-			}
+		if (isNoise(m.fromEmail, m.subject, m.body, ignore)) {
+			return { created: false, threaded: false, skippedNoise: true };
+		}
 
-			if (isNoise(m.fromEmail, m.subject, m.body, ignore)) {
-				skippedNoise++;
-				continue;
-			}
+		const [finalSub, finalName, finalEmail] = resolveSender(
+			m.subject,
+			m.fromName,
+			m.fromEmail,
+			m.body,
+		);
 
-			const [finalSub, finalName, finalEmail] = resolveSender(
-				m.subject,
-				m.fromName,
-				m.fromEmail,
-				m.body,
-			);
+		const cleanSub = (finalSub || m.subject || "")
+			.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
+			.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
+			.trim()
+			.toLowerCase();
 
-			const cleanSub = (finalSub || m.subject || "")
-				.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
-				.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
-				.trim()
-				.toLowerCase();
+		let root = mid;
+		if (m.references) {
+			const refs = m.references.match(/<[^>]+>/g);
+			if (refs && refs[0]) root = refs[0];
+		} else if (m.inReplyTo) {
+			const inR = m.inReplyTo.match(/<[^>]+>/g);
+			if (inR && inR[0]) root = inR[0];
+		}
 
-			let root = mid;
-			if (m.references) {
-				const refs = m.references.match(/<[^>]+>/g);
-				if (refs && refs[0]) root = refs[0];
-			} else if (m.inReplyTo) {
-				const inR = m.inReplyTo.match(/<[^>]+>/g);
-				if (inR && inR[0]) root = inR[0];
-			}
+		let existingTarget: any = null;
+		if (root && threadsMap.has(root)) {
+			existingTarget = threadsMap.get(root);
+		}
+		if (!existingTarget && cleanSub && threadsMap.has(cleanSub)) {
+			existingTarget = threadsMap.get(cleanSub);
+		}
 
-			let existingTarget: any = null;
+		if (!existingTarget && root) {
+			existingTarget = await Enquiry.findOne({
+				$or: [
+					{ threadId: root },
+					{ sourceMessageId: root },
+					...(m.inReplyTo ? [{ sourceMessageId: m.inReplyTo.trim() }] : []),
+				],
+			});
+		}
 
-			if (root && threadsMap.has(root)) {
-				existingTarget = threadsMap.get(root);
-			}
-			if (!existingTarget && cleanSub && threadsMap.has(cleanSub)) {
-				existingTarget = threadsMap.get(cleanSub);
-			}
+		const tenderRef = extractTenderRef(`${m.subject}\n${m.body}`);
+		if (!existingTarget) {
+			const recentEnquiries: any[] = await Enquiry.find()
+				.sort({ _id: -1 })
+				.limit(250)
+				.lean();
 
-			if (!existingTarget && root) {
-				existingTarget = await Enquiry.findOne({
-					$or: [
-						{ threadId: root },
-						{ sourceMessageId: root },
-						...(m.inReplyTo ? [{ sourceMessageId: m.inReplyTo.trim() }] : []),
-					],
-				});
-			}
-
-			const tenderRef = extractTenderRef(`${m.subject}\n${m.body}`);
-			if (!existingTarget) {
-				const recentEnquiries: any[] = await Enquiry.find()
-					.sort({ _id: -1 })
-					.limit(250)
-					.lean();
-
-				existingTarget = recentEnquiries.find((e) => {
-					if (tenderRef && tenderRef.length >= 5) {
-						const eTenderRef = extractTenderRef(
-							`${e.itemDescription}\n${e.remarks || ""}\n${e.emailBody || ""}`,
-						);
-						if (eTenderRef && eTenderRef === tenderRef) {
-							return true;
-						}
+			existingTarget = recentEnquiries.find((e) => {
+				if (tenderRef && tenderRef.length >= 5) {
+					const eTenderRef = extractTenderRef(
+						`${e.itemDescription}\n${e.remarks || ""}\n${e.emailBody || ""}`,
+					);
+					if (eTenderRef && eTenderRef === tenderRef) {
+						return true;
 					}
-
-					const existingCleanSub = (e.itemDescription || "")
-						.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
-						.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
-						.trim()
-						.toLowerCase();
-
-					if (!existingCleanSub) return false;
-
-					const subMatches =
-						existingCleanSub === cleanSub ||
-						(cleanSub.length >= 8 && existingCleanSub.includes(cleanSub)) ||
-						(existingCleanSub.length >= 8 &&
-							cleanSub.includes(existingCleanSub));
-
-					if (!subMatches) return false;
-
-					const emailMatches =
-						!finalEmail ||
-						!e.email ||
-						e.email.toLowerCase() === finalEmail.toLowerCase() ||
-						e.email.toLowerCase() === m.fromEmail.toLowerCase() ||
-						existingCleanSub === cleanSub;
-
-					return emailMatches;
-				});
-			}
-
-			if (existingTarget) {
-				let newBody = existingTarget.emailBody || "";
-				if (!newBody) {
-					newBody = m.body;
-				} else if (
-					m.body &&
-					!newBody.includes(m.body.substring(0, Math.min(m.body.length, 80)))
-				) {
-					newBody = `${newBody}\n\n--- Thread Update (${m.date || "Received"}) from ${m.fromName || m.fromEmail} ---\n\n${m.body}`;
 				}
 
-				await Enquiry.findByIdAndUpdate(existingTarget._id, {
-					emailBody: newBody,
-					dateReceived: m.date || existingTarget.dateReceived,
-				});
+				const existingCleanSub = (e.itemDescription || "")
+					.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
+					.replace(/^\s*(re|fwd|fw|\[fwd\])\s*:\s*/gi, "")
+					.trim()
+					.toLowerCase();
 
-				for (const att of m.attachments) {
-					try {
-						const existingAtt = await Attachment.findOne({
-							enquiryId: existingTarget._id,
-							filename: att.filename,
-							size: att.data.length,
-						});
-						if (existingAtt) continue;
+				if (!existingCleanSub) return false;
 
-						const relObjectKey = `enquiries/${existingTarget._id}/${att.filename}`;
+				const subMatches =
+					existingCleanSub === cleanSub ||
+					(cleanSub.length >= 8 && existingCleanSub.includes(cleanSub)) ||
+					(existingCleanSub.length >= 8 &&
+						cleanSub.includes(existingCleanSub));
 
-						await Attachment.create({
-							enquiryId: existingTarget._id,
-							filename: att.filename,
-							contentType: att.contentType,
-							size: att.data.length,
-							objectKey: relObjectKey,
-							kind: "email",
-							uploadedBy: m.fromEmail || "Email",
-							data: att.data,
-						});
+				if (!subMatches) return false;
 
-						mirrorAttachmentToDrive(
-							existingTarget._id.toString(),
-							att.filename,
-							att.contentType,
-							att.data,
-							"email",
-						).catch(() => {});
-					} catch (e) {}
-				}
+				const emailMatches =
+					!finalEmail ||
+					!e.email ||
+					e.email.toLowerCase() === finalEmail.toLowerCase() ||
+					e.email.toLowerCase() === m.fromEmail.toLowerCase() ||
+					existingCleanSub === cleanSub;
 
-				if (mid) {
-					await ProcessedMessage.findOneAndUpdate(
-						{ messageId: mid },
-						{ messageId: mid },
-						{ upsert: true },
-					).catch(() => {});
-					knownIds.add(mid);
-				}
-				threadsMap.set(root || mid, existingTarget);
-				if (cleanSub) threadsMap.set(cleanSub, existingTarget);
-				threaded++;
-				continue;
-			}
+				return emailMatches;
+			});
+		}
 
-			if (isInternalAddr(finalEmail) && isInternalAddr(m.fromEmail)) {
-				skippedNoise++;
-				if (mid) {
-					await ProcessedMessage.findOneAndUpdate(
-						{ messageId: mid },
-						{ messageId: mid },
-						{ upsert: true },
-					).catch(() => {});
-					knownIds.add(mid);
-				}
-				continue;
-			}
-
-			let company = companyFromEmail(finalEmail);
-			if (
-				!company &&
-				finalName &&
-				!GENERIC_NAMES.has(finalName.toLowerCase())
+		if (existingTarget) {
+			let newBody = existingTarget.emailBody || "";
+			if (!newBody) {
+				newBody = m.body;
+			} else if (
+				m.body &&
+				!newBody.includes(m.body.substring(0, Math.min(m.body.length, 80)))
 			) {
-				company = finalName;
+				newBody = `${newBody}\n\n--- Thread Update (${m.date || "Received"}) from ${m.fromName || m.fromEmail} ---\n\n${m.body}`;
 			}
-			company = company || finalName || "Email enquiry";
 
-			const dateReceived = m.date || new Date().toISOString().split("T")[0];
-
-			const year = new Date().getFullYear().toString();
-			const counter: any = await RfqCounter.findOneAndUpdate(
-				{ year },
-				{ $inc: { lastSeq: 1 } },
-				{ upsert: true, new: true },
-			);
-			const seqStr = String(counter.lastSeq).padStart(3, "0");
-			const rfqId = `ENC/RFQ/${year}/${seqStr}`;
-
-			const newEnquiry: any = await Enquiry.create({
-				rfqId,
-				dateReceived,
-				receivedOn: dateReceived,
-				companyName: company,
-				contactPerson: finalName,
-				mobile: extractPhone(m.body),
-				email: finalEmail,
-				itemDescription: finalSub || "(no subject)",
-				status: "Open",
-				sourceMessageId: mid,
-				threadId: root || mid,
-				emailBody: m.body,
-				followupRemarks: "Received by email to the RFQ inbox.",
+			await Enquiry.findByIdAndUpdate(existingTarget._id, {
+				emailBody: newBody,
+				dateReceived: m.date || existingTarget.dateReceived,
 			});
 
 			for (const att of m.attachments) {
 				try {
 					const existingAtt = await Attachment.findOne({
-						enquiryId: newEnquiry._id,
+						enquiryId: existingTarget._id,
 						filename: att.filename,
 						size: att.data.length,
 					});
 					if (existingAtt) continue;
 
-					const relObjectKey = `enquiries/${newEnquiry._id}/${att.filename}`;
+					const relObjectKey = `enquiries/${existingTarget._id}/${att.filename}`;
 
 					await Attachment.create({
-						enquiryId: newEnquiry._id,
+						enquiryId: existingTarget._id,
 						filename: att.filename,
 						contentType: att.contentType,
 						size: att.data.length,
 						objectKey: relObjectKey,
 						kind: "email",
-						uploadedBy: "Email",
+						uploadedBy: m.fromEmail || "Email",
 						data: att.data,
 					});
 
 					mirrorAttachmentToDrive(
-						newEnquiry._id.toString(),
+						existingTarget._id.toString(),
 						att.filename,
 						att.contentType,
 						att.data,
@@ -1428,24 +1354,103 @@ export class InboxService {
 				).catch(() => {});
 				knownIds.add(mid);
 			}
-
-			threadsMap.set(root || mid, newEnquiry);
-			created++;
+			threadsMap.set(root || mid, existingTarget);
+			if (cleanSub) threadsMap.set(cleanSub, existingTarget);
+			return { created: false, threaded: true, skippedNoise: false };
 		}
 
-		this.lastIngestStats = {
-			mailbox,
-			includeRead: includeRead(),
-			matched: fetchedEmails.length,
-			downloaded: fetchedEmails.length,
-			skippedKnown,
-			skippedNoise,
-			created,
-			threaded,
-			lastRunAt: new Date().toISOString(),
-		};
+		if (isInternalAddr(finalEmail) && isInternalAddr(m.fromEmail)) {
+			if (mid) {
+				await ProcessedMessage.findOneAndUpdate(
+					{ messageId: mid },
+					{ messageId: mid },
+					{ upsert: true },
+				).catch(() => {});
+				knownIds.add(mid);
+			}
+			return { created: false, threaded: false, skippedNoise: true };
+		}
 
-		console.log("[InboxService] Ingest completed:", this.lastIngestStats);
-		return created;
+		let company = companyFromEmail(finalEmail);
+		if (
+			!company &&
+			finalName &&
+			!GENERIC_NAMES.has(finalName.toLowerCase())
+		) {
+			company = finalName;
+		}
+		company = company || finalName || "Email enquiry";
+
+		const dateReceived = m.date || new Date().toISOString().split("T")[0];
+
+		const year = new Date().getFullYear().toString();
+		const counter: any = await RfqCounter.findOneAndUpdate(
+			{ year },
+			{ $inc: { lastSeq: 1 } },
+			{ upsert: true, new: true },
+		);
+		const seqStr = String(counter.lastSeq).padStart(3, "0");
+		const rfqId = `ENC/RFQ/${year}/${seqStr}`;
+
+		const newEnquiry: any = await Enquiry.create({
+			rfqId,
+			dateReceived,
+			receivedOn: dateReceived,
+			companyName: company,
+			contactPerson: finalName,
+			mobile: extractPhone(m.body),
+			email: finalEmail,
+			itemDescription: finalSub || "(no subject)",
+			status: "Open",
+			sourceMessageId: mid,
+			threadId: root || mid,
+			emailBody: m.body,
+			followupRemarks: "Received by email to the RFQ inbox.",
+		});
+
+		for (const att of m.attachments) {
+			try {
+				const existingAtt = await Attachment.findOne({
+					enquiryId: newEnquiry._id,
+					filename: att.filename,
+					size: att.data.length,
+				});
+				if (existingAtt) continue;
+
+				const relObjectKey = `enquiries/${newEnquiry._id}/${att.filename}`;
+
+				await Attachment.create({
+					enquiryId: newEnquiry._id,
+					filename: att.filename,
+					contentType: att.contentType,
+					size: att.data.length,
+					objectKey: relObjectKey,
+					kind: "email",
+					uploadedBy: "Email",
+					data: att.data,
+				});
+
+				mirrorAttachmentToDrive(
+					newEnquiry._id.toString(),
+					att.filename,
+					att.contentType,
+					att.data,
+					"email",
+				).catch(() => {});
+			} catch (e) {}
+		}
+
+		if (mid) {
+			await ProcessedMessage.findOneAndUpdate(
+				{ messageId: mid },
+				{ messageId: mid },
+				{ upsert: true },
+			).catch(() => {});
+			knownIds.add(mid);
+		}
+
+		threadsMap.set(root || mid, newEnquiry);
+		if (cleanSub) threadsMap.set(cleanSub, newEnquiry);
+		return { created: true, threaded: false, skippedNoise: false };
 	}
 }
