@@ -2254,22 +2254,23 @@ export const getDirectory = async (
 			}
 		});
 
-		const enquiryAssignees: any[] = await Enquiry.find()
-			.select("assignedTo salesResponsibility technical")
-			.lean();
+		const [assignedToNames, salesNames, techNames] = await Promise.all([
+			Enquiry.distinct("assignedTo"),
+			Enquiry.distinct("salesResponsibility"),
+			Enquiry.distinct("technical"),
+		]);
 
 		const nameSet = new Set<string>();
-		systemUsers.forEach((u) => nameSet.add(u.name));
-		legacyAssignees.forEach((a) => nameSet.add(a.name));
-		enquiryAssignees.forEach((e) => {
-			[e.assignedTo, e.salesResponsibility, e.technical].forEach((val) => {
-				if (val) {
-					val.split("/").forEach((t: string) => {
-						const trimmed = t.trim();
-						if (trimmed) nameSet.add(trimmed);
-					});
-				}
-			});
+		systemUsers.forEach((u) => { if (u.name) nameSet.add(u.name); });
+		legacyAssignees.forEach((a) => { if (a.name) nameSet.add(a.name); });
+
+		[...assignedToNames, ...salesNames, ...techNames].forEach((val) => {
+			if (val) {
+				String(val).split("/").forEach((t: string) => {
+					const trimmed = t.trim();
+					if (trimmed) nameSet.add(trimmed);
+				});
+			}
 		});
 
 		const result = Array.from(nameSet)

@@ -946,8 +946,6 @@ export class InboxService {
 			return 0;
 		}
 
-		await this.cleanDbEmailBodies().catch(() => {});
-
 		const host = (process.env.IMAP_HOST || "imap.gmail.com").trim();
 		const port = parseInt(process.env.IMAP_PORT || "993", 10);
 		const user = (process.env.IMAP_USER || "").trim();

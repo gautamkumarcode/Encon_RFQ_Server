@@ -29,8 +29,6 @@ export async function connectDB(): Promise<typeof mongoose> {
 
     const uriToUse = mongoUri || 'mongodb://127.0.0.1:27017/encon_admin';
 
-    mongoose.set('bufferCommands', false);
-
     const opts = {
       maxPoolSize: 10,
       minPoolSize: 1,

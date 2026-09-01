@@ -75,21 +75,7 @@ app.use(cookieParser());
 app.use(express.json({ limit: '50mb' }));
 app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
-// Database Connection Middleware for Serverless / Production
-app.use(async (req, res, next) => {
-  try {
-    await connectDB();
-    next();
-  } catch (err: any) {
-    console.error('❌ Serverless DB Connection Error:', err.message);
-    res.status(500).json({
-      success: false,
-      message: `Database Connection Error: ${err.message}. Ensure MONGODB_URI is configured in Vercel Environment Variables.`,
-    });
-  }
-});
-
-// Health Check
+// API Routes
 app.get('/health', (req, res) => {
   res.json({
     status: 'OK',
