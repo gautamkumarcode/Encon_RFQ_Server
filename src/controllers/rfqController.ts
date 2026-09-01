@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Response } from "express";
 import pdfParse from "pdf-parse";
 import * as XLSX from "xlsx";
@@ -759,6 +760,16 @@ export const getEnquiries = async (
 		});
 
 		const activeEnquiries = allEnriched.filter((e) => !isClosed(e.status));
+		const overdueCount = activeEnquiries.filter((e) => (e.daysOpen || 0) >= 30).length;
+		const dueTodayCount = allEnriched.filter((e) => e.followupDue).length;
+		const approvedCount = allEnriched.filter(
+			(e) => (e.status || "").toLowerCase() === "approved",
+		).length;
+		const offersSentCount = allEnriched.filter(
+			(e) => (e.status || "").toLowerCase() === "offer sent",
+		).length;
+		const unmappedCount = allEnriched.filter((e) => !e.isMappedToOffer).length;
+
 		const stats = {
 			total: allEnriched.length,
 			active: activeEnquiries.length,
@@ -770,17 +781,18 @@ export const getEnquiries = async (
 					(e.status || "").toLowerCase() === "under review" ||
 					(e.status || "").toLowerCase() === "verified",
 			).length,
-			offerSent: allEnriched.filter(
-				(e) => (e.status || "").toLowerCase() === "offer sent",
-			).length,
+			approvedCount,
+			approvedCosting: approvedCount,
+			offerSent: offersSentCount,
+			offersSent: offersSentCount,
 			closed: allEnriched.filter((e) => isClosed(e.status)).length,
-			overdue: activeEnquiries.filter((e) => (e.daysOpen || 0) >= 30).length,
-			dueFollowups: allEnriched.filter((e) => e.followupDue).length,
+			overdue: overdueCount,
+			overdueCount,
+			dueFollowups: dueTodayCount,
+			dueToday: dueTodayCount,
 			mappedOffersCount: allEnriched.filter((e) => e.isMappedToOffer).length,
-			pendingCount: allEnriched.filter((e) => !e.isMappedToOffer).length,
-			approvedCount: allEnriched.filter(
-				(e) => (e.status || "").toLowerCase() === "approved",
-			).length,
+			pendingCount: unmappedCount,
+			unmappedOffers: unmappedCount,
 			byAssignee: Object.entries(
 				activeEnquiries.reduce((acc: any, curr) => {
 					const assignee = curr.assignedTo || "Unassigned";
@@ -1016,10 +1028,10 @@ export const getEnquiryById = async (
 ) => {
 	try {
 		const id = req.params.id;
-		if (!id) {
+		if (!id || !mongoose.Types.ObjectId.isValid(id)) {
 			return res
-				.status(400)
-				.json({ success: false, message: "Invalid enquiry ID" });
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
 		}
 
 		const enquiry: any = await Enquiry.findById(id).lean();
@@ -1067,15 +1079,28 @@ export const getEnquiryById = async (
 			url: `/api/rfq/attachments/${att._id}`,
 		}));
 
-		const activityLogs = await ActivityLog.find({
-			$or: [
-				{ details: { $regex: `"enquiryId":"?${id}"?`, $options: "i" } },
-				{ details: { $regex: `"${enquiry.rfqId}"`, $options: "i" } },
-			],
-		})
-			.sort({ createdAt: -1 })
-			.limit(30)
-			.lean();
+		let activityLogs: any[] = [];
+		try {
+			const safeId = String(id).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			const safeRfqId = enquiry.rfqId
+				? String(enquiry.rfqId).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+				: "";
+
+			const orConditions: any[] = [
+				{ details: { $regex: safeId, $options: "i" } },
+			];
+			if (safeRfqId) {
+				orConditions.push({ details: { $regex: safeRfqId, $options: "i" } });
+			}
+
+			activityLogs = await ActivityLog.find({ $or: orConditions })
+				.sort({ createdAt: -1 })
+				.limit(30)
+				.lean();
+		} catch (logErr) {
+			console.warn("[getEnquiryById] ActivityLog fetch warning:", logErr);
+			activityLogs = [];
+		}
 
 		const cleanOfferNo = sanitizeOfferNo(enquiry.offerNo, enquiry.rfqId);
 
