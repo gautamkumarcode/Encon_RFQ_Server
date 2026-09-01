@@ -1053,19 +1053,14 @@ export class InboxService {
 					}
 
 					for (const { seq, mid } of seqMids) {
-						if (!mid || knownIds.has(mid)) {
-							if (mid && knownIds.has(mid)) skippedKnown++;
-							// No Message-ID means we can't deduplicate — include it to be safe
+						const resolvedMid = mid || `synthetic:seq:${seq}`;
+						if (knownIds.has(resolvedMid)) {
+							skippedKnown++;
 						} else {
 							newMsgNums.push(seq);
 						}
 					}
 
-					// For messages where we got no Message-ID in envelope, include them
-					for (const seq of batch) {
-						const alreadyHandled = seqMids.some((s) => s.seq === seq);
-						if (!alreadyHandled) newMsgNums.push(seq);
-					}
 				} catch (envErr: any) {
 					// If envelope fetch fails for a batch, fall back to including all of them
 					console.warn(
