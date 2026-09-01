@@ -318,9 +318,12 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 					let buf: Buffer;
 					if (transferEncoding === "base64") {
 						const rawBase64 = bodyRaw.split(/--[a-zA-Z0-9_.-]+/)[0] || bodyRaw;
-						buf = Buffer.from(rawBase64, "base64");
+						const cleanBase64 = rawBase64.replace(/[^A-Za-z0-9+/=]/g, "");
+						buf = Buffer.from(cleanBase64, "base64");
+					} else if (transferEncoding === "quoted-printable") {
+						buf = Buffer.from(decodeQuotedPrintable(bodyRaw), "binary");
 					} else {
-						buf = Buffer.from(bodyRaw, "utf8");
+						buf = Buffer.from(bodyRaw, "binary");
 					}
 
 					if (buf.length > 0) {
@@ -449,10 +452,11 @@ export function extractMimeWithAttachments(rawMime: string): {
 				const sepIdx = afterHeader.search(/\r?\n\r?\n/);
 				if (sepIdx !== -1) {
 					const payloadSection =
-						afterHeader.substring(sepIdx + 2).split(/\r?\n\r?\n/)[0] || "";
-					if (payloadSection.length > 40) {
+						afterHeader.substring(sepIdx + 2).split(/--[a-zA-Z0-9_.-]+/)[0] || "";
+					const cleanBase64 = payloadSection.replace(/[^A-Za-z0-9+/=]/g, "");
+					if (cleanBase64.length > 40) {
 						try {
-							const buf = Buffer.from(payloadSection, "base64");
+							const buf = Buffer.from(cleanBase64, "base64");
 							if (buf.length > 0) {
 								let ct = "application/octet-stream";
 								const fnLower = fn.toLowerCase();

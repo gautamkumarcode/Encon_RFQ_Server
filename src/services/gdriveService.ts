@@ -235,30 +235,28 @@ async function uploadFileToFolder(
   accessToken: string
 ) {
   const boundary = '-------314159265358979323846';
-  const delimiter = `\r\n--${boundary}\r\n`;
-  const closeDelimiter = `\r\n--${boundary}--`;
-
   const finalMime = resolveMimeType(filename, mimeType);
 
-  const metadata = {
+  const metadataStr = JSON.stringify({
     name: filename,
     parents: [folderId],
     mimeType: finalMime,
-  };
+  });
+
+  const header = `--${boundary}\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n${metadataStr}\r\n--${boundary}\r\nContent-Type: ${finalMime}\r\nContent-Transfer-Encoding: binary\r\n\r\n`;
+  const footer = `\r\n--${boundary}--`;
 
   const multipartRequestBody = Buffer.concat([
-    Buffer.from(
-      `${delimiter}Content-Type: application/json; charset=UTF-8\r\n\r\n${JSON.stringify(metadata)}`
-    ),
-    Buffer.from(`${delimiter}Content-Type: ${finalMime}\r\n\r\n`),
+    Buffer.from(header, 'utf8'),
     buffer,
-    Buffer.from(closeDelimiter),
+    Buffer.from(footer, 'utf8'),
   ]);
 
   await axios.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', multipartRequestBody, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': `multipart/related; boundary=${boundary}`,
+      'Content-Length': multipartRequestBody.length,
     },
     params: { supportsAllDrives: true, ignoreDefaultVisibility: true },
   });
@@ -299,6 +297,53 @@ function getSubfolderName(kind: string = '', filename: string = ''): string {
   return FOLDER_CLIENT_DOCS;
 }
 
+const enquiryFolderPromises = new Map<string, Promise<{ id: string; url: string }>>();
+
+/**
+ * Single-threaded helper to ensure per-RFQ Google Drive folder exists without creating duplicates.
+ */
+async function getOrEnsureRfqFolder(
+  enquiryId: string,
+  accessToken: string
+): Promise<{ id: string; url: string }> {
+  const enquiry: any = await Enquiry.findById(enquiryId).lean();
+  if (!enquiry) return { id: '', url: '' };
+
+  if (enquiry.driveFolderId && enquiry.driveFolderUrl) {
+    return { id: enquiry.driveFolderId, url: enquiry.driveFolderUrl };
+  }
+
+  if (enquiryFolderPromises.has(enquiryId)) {
+    return enquiryFolderPromises.get(enquiryId)!;
+  }
+
+  const promise = (async () => {
+    try {
+      const parentFolder = await ensureParentFolder(accessToken);
+      const rfqFolderName = enquiry.rfqId || `enquiry-${enquiry._id}`;
+      const rfqFolder = await ensureFolder(rfqFolderName, parentFolder.id, accessToken);
+      await shareFolder(rfqFolder.id, accessToken);
+
+      // Create default subfolders
+      await ensureFolder(FOLDER_CLIENT_DOCS, rfqFolder.id, accessToken);
+      await ensureFolder(FOLDER_COSTING_TECHNICAL, rfqFolder.id, accessToken);
+      await ensureFolder(FOLDER_OFFER_DOCS, rfqFolder.id, accessToken);
+
+      await Enquiry.findByIdAndUpdate(enquiryId, {
+        driveFolderId: rfqFolder.id,
+        driveFolderUrl: rfqFolder.url,
+      });
+
+      return { id: rfqFolder.id, url: rfqFolder.url };
+    } finally {
+      enquiryFolderPromises.delete(enquiryId);
+    }
+  })();
+
+  enquiryFolderPromises.set(enquiryId, promise);
+  return promise;
+}
+
 /**
  * Mirror a single attachment to Google Drive in the background.
  * Folder structure: RFQ / <RFQ_ID> / <Subfolder> / <file>
@@ -316,39 +361,18 @@ export async function mirrorAttachmentToDrive(
       return { success: false };
     }
 
-    const enquiry: any = await Enquiry.findById(enquiryId).lean();
-    if (!enquiry) return { success: false };
-
-    // 1. Ensure Parent "RFQ" Folder
-    const parentFolder = await ensureParentFolder(accessToken);
-
-    // 2. Ensure per-RFQ folder "RFQ/<RFQ_ID>"
-    const rfqFolderName = enquiry.rfqId || `enquiry-${enquiry._id}`;
-    let rfqFolderId = enquiry.driveFolderId;
-    let rfqFolderUrl = enquiry.driveFolderUrl;
-
-    if (!rfqFolderId) {
-      const rfqFolder = await ensureFolder(rfqFolderName, parentFolder.id, accessToken);
-      rfqFolderId = rfqFolder.id;
-      rfqFolderUrl = rfqFolder.url;
-      await shareFolder(rfqFolderId, accessToken);
-
-      // Update DB record
-      await Enquiry.findByIdAndUpdate(enquiryId, {
-        driveFolderId: rfqFolderId,
-        driveFolderUrl: rfqFolderUrl,
-      });
-    }
+    const rfqFolder = await getOrEnsureRfqFolder(enquiryId, accessToken);
+    if (!rfqFolder.id) return { success: false };
 
     // 3. Ensure Subfolder (Client documents | Technical Calculations | Costing & Offer)
     const subfolderName = getSubfolderName(kind, filename);
-    const subfolder = await ensureFolder(subfolderName, rfqFolderId, accessToken);
+    const subfolder = await ensureFolder(subfolderName, rfqFolder.id, accessToken);
 
     // 4. Upload file buffer into subfolder
     await uploadFileToFolder(subfolder.id, filename, mimeType, buffer, accessToken);
 
-    console.log(`✅ Mirrored file "${filename}" to Google Drive folder "${rfqFolderName}/${subfolderName}"`);
-    return { success: true, driveFolderUrl: rfqFolderUrl };
+    console.log(`✅ Mirrored file "${filename}" to Google Drive folder "${subfolderName}"`);
+    return { success: true, driveFolderUrl: rfqFolder.url };
   } catch (err: any) {
     console.error('⚠️ Google Drive Mirror Error (non-blocking):', err.response?.data || err.message);
     return { success: false };
@@ -359,32 +383,10 @@ export async function mirrorAttachmentToDrive(
  * Ensure an RFQ Google Drive folder exists and return its webViewLink URL.
  */
 export async function ensureEnquiryDriveFolder(enquiryId: string): Promise<string> {
-  const enquiry: any = await Enquiry.findById(enquiryId).lean();
-  if (!enquiry) return '';
-
-  if (enquiry.driveFolderUrl) {
-    return enquiry.driveFolderUrl;
-  }
-
   const accessToken = await getAccessToken();
   if (!accessToken) return '';
-
   try {
-    const parentFolder = await ensureParentFolder(accessToken);
-    const rfqFolderName = enquiry.rfqId || `enquiry-${enquiry._id}`;
-    const rfqFolder = await ensureFolder(rfqFolderName, parentFolder.id, accessToken);
-    await shareFolder(rfqFolder.id, accessToken);
-
-    // Create default subfolders
-    await ensureFolder(FOLDER_CLIENT_DOCS, rfqFolder.id, accessToken);
-    await ensureFolder(FOLDER_COSTING_TECHNICAL, rfqFolder.id, accessToken);
-    await ensureFolder(FOLDER_OFFER_DOCS, rfqFolder.id, accessToken);
-
-    await Enquiry.findByIdAndUpdate(enquiryId, {
-      driveFolderId: rfqFolder.id,
-      driveFolderUrl: rfqFolder.url,
-    });
-
+    const rfqFolder = await getOrEnsureRfqFolder(enquiryId, accessToken);
     return rfqFolder.url;
   } catch (err: any) {
     console.error('⚠️ Failed to ensure Google Drive folder:', err.message);
