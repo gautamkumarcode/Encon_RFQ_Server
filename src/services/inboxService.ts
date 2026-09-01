@@ -703,7 +703,17 @@ class SimpleImapClient {
 		private port: number,
 	) {}
 
+	public isConnected(): boolean {
+		return Boolean(this.client && !this.client.destroyed && this.client.writable);
+	}
+
 	public async connect(): Promise<void> {
+		if (this.client) {
+			try {
+				if (!this.client.destroyed) this.client.destroy();
+			} catch (e) {}
+		}
+		this.buffer = "";
 		return new Promise((resolve, reject) => {
 			let isResolved = false;
 			const timeout = setTimeout(() => {
@@ -741,13 +751,22 @@ class SimpleImapClient {
 		});
 	}
 
+	public async ensureConnected(user: string, pass: string, mailbox: string): Promise<void> {
+		if (!this.isConnected()) {
+			console.log(`[InboxService] Re-establishing IMAP connection to mailbox "${mailbox}"...`);
+			await this.connect();
+			await this.sendCommand(`LOGIN "${user}" "${pass}"`);
+			await this.sendCommand(`SELECT "${mailbox}"`);
+		}
+	}
+
 	public async sendCommand(cmd: string, timeoutMs = 25000): Promise<string> {
 		const tag = `A${this.tagIndex++}`;
 		const fullCmd = `${tag} ${cmd}\r\n`;
 		this.buffer = "";
 
 		return new Promise((resolve, reject) => {
-			if (!this.client || this.client.destroyed) {
+			if (!this.client || this.client.destroyed || !this.client.writable) {
 				return reject(new Error("IMAP Client not connected"));
 			}
 
@@ -757,6 +776,10 @@ class SimpleImapClient {
 				if (!isFinished) {
 					isFinished = true;
 					clearInterval(checkInterval);
+					if (this.client) {
+						this.client.removeListener("error", onError);
+						this.client.removeListener("close", onClose);
+					}
 					reject(new Error(`IMAP command timeout (${cmd.substring(0, 30)})`));
 				}
 			}, timeoutMs);
@@ -766,16 +789,33 @@ class SimpleImapClient {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
+					if (this.client) this.client.removeListener("close", onClose);
 					reject(err);
 				}
 			};
 
+			const onClose = () => {
+				if (!isFinished) {
+					isFinished = true;
+					clearTimeout(timer);
+					clearInterval(checkInterval);
+					if (this.client) this.client.removeListener("error", onError);
+					reject(new Error("IMAP connection closed by server"));
+				}
+			};
+
 			this.client.once("error", onError);
+			this.client.once("close", onClose);
+
 			this.client.write(fullCmd, (err) => {
 				if (err && !isFinished) {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
+					if (this.client) {
+						this.client.removeListener("error", onError);
+						this.client.removeListener("close", onClose);
+					}
 					reject(err);
 				}
 			});
@@ -791,7 +831,10 @@ class SimpleImapClient {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
-					if (this.client) this.client.removeListener("error", onError);
+					if (this.client) {
+						this.client.removeListener("error", onError);
+						this.client.removeListener("close", onClose);
+					}
 					this.buffer = "";
 					return reject(
 						new Error("IMAP message payload exceeds max size limit (15MB)"),
@@ -832,6 +875,7 @@ class SimpleImapClient {
 					clearInterval(checkInterval);
 					if (this.client) {
 						this.client.removeListener("error", onError);
+						this.client.removeListener("close", onClose);
 					}
 
 					const response = this.buffer;
@@ -988,6 +1032,7 @@ export class InboxService {
 				const batch = candidateNums.slice(b, b + ENVELOPE_BATCH);
 				const setSpec = batch.join(",");
 				try {
+					await imap.ensureConnected(user, password, mailbox);
 					const envRes = await imap.sendCommand(
 						`FETCH ${setSpec} (BODY.PEEK[HEADER.FIELDS (MESSAGE-ID)])`,
 						15000,
@@ -1044,10 +1089,17 @@ export class InboxService {
 			for (let i = 0; i < uniqueNewNums.length; i++) {
 				const num = uniqueNewNums[i];
 				try {
-					// Pre-check size
-					const sizeRes = await imap
-						.sendCommand(`FETCH ${num} (RFC822.SIZE)`)
-						.catch(() => "");
+					await imap.ensureConnected(user, password, mailbox);
+
+					// Pre-check size with auto-reconnect fallback
+					let sizeRes = "";
+					try {
+						sizeRes = await imap.sendCommand(`FETCH ${num} (RFC822.SIZE)`);
+					} catch (szErr) {
+						await imap.ensureConnected(user, password, mailbox);
+						sizeRes = await imap.sendCommand(`FETCH ${num} (RFC822.SIZE)`).catch(() => "");
+					}
+
 					const sizeMatch = sizeRes.match(/RFC822\.SIZE\s+(\d+)/i);
 					const messageSizeBytes = sizeMatch ? parseInt(sizeMatch[1], 10) : 0;
 
@@ -1057,6 +1109,7 @@ export class InboxService {
 							`⚠️ [InboxService] Message ${num} (${i + 1}/${uniqueNewNums.length}) size (${sizeMb} MB) exceeds ${maxMb} MB limit. Fetching header and text body only (omitting large attachments)...`,
 						);
 						try {
+							await imap.ensureConnected(user, password, mailbox);
 							const rawFetch = await imap.sendCommand(
 								`FETCH ${num} (BODY.PEEK[HEADER] BODY.PEEK[TEXT])`,
 							);
@@ -1079,7 +1132,16 @@ export class InboxService {
 					console.log(
 						`[InboxService] Downloading message ${num} (${i + 1}/${uniqueNewNums.length}) [${messageSizeBytes ? (messageSizeBytes / 1024).toFixed(0) + "KB" : "size unknown"}]...`,
 					);
-					const rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+
+					let rawFetch = "";
+					try {
+						rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+					} catch (fetchErr) {
+						// Socket dropped mid-download — reconnect & retry once
+						await imap.ensureConnected(user, password, mailbox);
+						rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`);
+					}
+
 					const parsed = parseMimeMessage(rawFetch);
 					if (parsed) {
 						fetchedEmails.push(parsed);
