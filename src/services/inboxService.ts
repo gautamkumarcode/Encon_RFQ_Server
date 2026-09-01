@@ -398,8 +398,9 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 
 export function cleanMimeRemnants(text: string): string {
 	if (!text) return "";
+	const safeInput = text.length > 150000 ? text.substring(0, 150000) : text;
 	try {
-		return text
+		return safeInput
 			.replace(
 				/This is a multipart message in MIME format\.?\s*(?:boundary=.*)?/gim,
 				"",
@@ -412,11 +413,11 @@ export function cleanMimeRemnants(text: string): string {
 			)
 			.replace(/^\s*(?:filename|name)\s*=\s*"?[^";\r\n]+"?.*$/gim, "")
 			.replace(/\bcharset="?[a-z0-9_-]+"?/gim, "")
-			.replace(/^[a-zA-Z0-9+/=]{40,}$/gm, "")
+			.replace(/^[a-zA-Z0-9+/=]{60,}$/gm, "")
 			.replace(/\n{3,}/g, "\n\n")
 			.trim();
 	} catch (err) {
-		return (text || "").substring(0, 5000);
+		return (safeInput || "").substring(0, 10000);
 	}
 }
 
