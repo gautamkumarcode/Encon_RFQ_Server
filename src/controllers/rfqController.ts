@@ -913,6 +913,7 @@ export const getAnalyticsDashboard = async (
 				: {};
 
 		const enquiries: any[] = await Enquiry.find(userScopeWhere)
+			.select("-emailBody")
 			.sort({ _id: -1 })
 			.lean();
 
@@ -1108,7 +1109,7 @@ export const getEnquiryById = async (
 			...enquiry,
 			id: enquiry._id.toString(),
 			offerNo: cleanOfferNo,
-			emailBody: cleanMimeRemnants(enquiry.emailBody || ""),
+			emailBody: enquiry.emailBody || "",
 			attachments: cleanAttachments,
 			daysOpen,
 			ageClass: calculateAgeClass(daysOpen),

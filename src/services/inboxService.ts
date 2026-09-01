@@ -398,7 +398,10 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 
 export function cleanMimeRemnants(text: string): string {
 	if (!text) return "";
-	const safeInput = text.length > 150000 ? text.substring(0, 150000) : text;
+	// Normalise line endings first so all regexes work on \n only
+	const safeInput = (text.length > 150000 ? text.substring(0, 150000) : text)
+		.replace(/\r\n/g, "\n")
+		.replace(/\r/g, "\n");
 	try {
 		return safeInput
 			.replace(
@@ -408,12 +411,16 @@ export function cleanMimeRemnants(text: string): string {
 			.replace(/^--?=?[_a-zA-Z0-9.-]+.*$/gm, "")
 			.replace(/_NextPart_[a-zA-Z0-9._-]+(?:--)?/g, "")
 			.replace(
-				/^\s*(?:Content-Type|Content-Transfer-Encoding|Content-Disposition|Content-ID|MIME-Version):\s*.*$/gim,
+				/^\s*(?:Content-Type|Content-Transfer-Encoding|Content-Disposition|Content-ID|MIME-Version|X-Attachment-Id|X-GM-MSGID|X-Google-DKIM):\s*.*$/gim,
 				"",
 			)
 			.replace(/^\s*(?:filename|name)\s*=\s*"?[^";\r\n]+"?.*$/gim, "")
 			.replace(/\bcharset="?[a-z0-9_-]+"?/gim, "")
-			.replace(/^[a-zA-Z0-9+/=]{60,}$/gm, "")
+			// Remove standalone base64 lines (40+ chars of only base64 chars)
+			.replace(/^[A-Za-z0-9+/=]{40,}$/gm, "")
+			// Remove long embedded base64 blobs
+			.replace(/(?:^|\n)[A-Za-z0-9+/=\n]{200,}/g, "")
+			// Collapse 3+ consecutive blank lines → 1 blank line
 			.replace(/\n{3,}/g, "\n\n")
 			.trim();
 	} catch (err) {
@@ -434,7 +441,24 @@ export function extractMimeWithAttachments(rawMime: string): {
 			.trim();
 
 		const parsed = extractMimePart(text);
-		let body = parsed.html || decodeQuotedPrintable(parsed.plain) || "";
+
+		// Prefer HTML over plain text. If we have HTML, store it directly without
+		// running cleanMimeRemnants (which is designed for raw MIME text and
+		// would corrupt HTML tags and inline styles).
+		let body: string;
+		const isHtmlBody = Boolean(parsed.html && parsed.html.trim());
+		if (isHtmlBody) {
+			// Trim any raw MIME artefacts that appear AFTER the HTML closing tag
+			const htmlEndIdx = parsed.html.lastIndexOf("</html>");
+			body = htmlEndIdx !== -1
+				? parsed.html.substring(0, htmlEndIdx + 7)
+				: parsed.html.trim();
+		} else if (parsed.plain) {
+			// For plain text, decode QP then clean MIME remnants
+			body = cleanMimeRemnants(decodeQuotedPrintable(parsed.plain));
+		} else {
+			body = "";
+		}
 
 		if (parsed.attachments.length === 0) {
 			try {
@@ -483,10 +507,9 @@ export function extractMimeWithAttachments(rawMime: string): {
 			}
 		}
 
+		// Fallback: if we still have no body, clean the entire raw text
 		if (!body) {
 			body = cleanMimeRemnants(text);
-		} else {
-			body = cleanMimeRemnants(body);
 		}
 
 		return { body: body.substring(0, 150000), attachments: parsed.attachments };
@@ -644,7 +667,6 @@ function parseMimeMessage(raw: string): ParsedEmail {
 			}
 		}
 
-		const rawBody = lines.slice(bodyStartIndex).join("\n");
 		const fromRaw = headers["from"] || "";
 		let fromName = "";
 		let fromEmail = "";
@@ -975,8 +997,6 @@ export class InboxService {
 			...enquiriesDb.map((e) => e.sourceMessageId),
 		]);
 
-		const fetchedEmails: ParsedEmail[] = [];
-
 		const imap = new SimpleImapClient(host, port);
 		try {
 			console.log(
@@ -1297,7 +1317,20 @@ export class InboxService {
 				m.body &&
 				!newBody.includes(m.body.substring(0, Math.min(m.body.length, 80)))
 			) {
-				newBody = `${newBody}\n\n--- Thread Update (${m.date || "Received"}) from ${m.fromName || m.fromEmail} ---\n\n${m.body}`;
+				// Detect if the existing body is HTML so we use a styled HTML separator
+				const existingIsHtml = /<html|<body|<div|<p|<table/i.test(newBody);
+				const newIsHtml = /<html|<body|<div|<p|<table/i.test(m.body);
+				if (existingIsHtml) {
+					const fromLabel = m.fromName || m.fromEmail || "Unknown";
+					const dateLabel = m.date || "Received";
+					const newBodyContent = newIsHtml
+						? m.body
+						: `<pre style="white-space:pre-wrap;font-family:inherit">${m.body}</pre>`;
+					const separator = `<hr style="border:0;border-top:2px dashed #94a3b8;margin:20px 0"><div style="font-size:11px;color:#64748b;margin-bottom:8px">📧 Thread Update — ${dateLabel} — from <strong>${fromLabel}</strong></div>`;
+					newBody = `${newBody}\n${separator}\n${newBodyContent}`;
+				} else {
+					newBody = `${newBody}\n\n--- Thread Update (${m.date || "Received"}) from ${m.fromName || m.fromEmail} ---\n\n${m.body}`;
+				}
 			}
 
 			await Enquiry.findByIdAndUpdate(existingTarget._id, {
