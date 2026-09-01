@@ -435,48 +435,51 @@ export function extractMimeWithAttachments(rawMime: string): {
 		const parsed = extractMimePart(text);
 		let body = parsed.html || decodeQuotedPrintable(parsed.plain) || "";
 
-		try {
-			const fnRegex =
-				/(?:filename|name)\s*=\s*"?([^";\r\n]+\.(?:zip|rar|7z|pdf|docx?|xlsx?|pptx?|msg|eml|png|jpe?g))"?/gi;
-			let fnMatch;
-			while ((fnMatch = fnRegex.exec(text)) !== null) {
-				const fn = fnMatch[1].trim();
-				if (!fn) continue;
-				const exists = parsed.attachments.some(
-					(a) => a.filename.toLowerCase() === fn.toLowerCase(),
-				);
-				if (exists) continue;
+		if (parsed.attachments.length === 0) {
+			try {
+				const fnRegex =
+					/(?:filename|name)\s*=\s*"?([^";\r\n]+\.(?:zip|rar|7z|pdf|docx?|xlsx?|pptx?|msg|eml|png|jpe?g))"?/gi;
+				let fnMatch;
+				while ((fnMatch = fnRegex.exec(text)) !== null) {
+					const fn = fnMatch[1].trim();
+					if (!fn) continue;
+					const exists = parsed.attachments.some(
+						(a) => a.filename.toLowerCase() === fn.toLowerCase(),
+					);
+					if (exists) continue;
 
-				const matchIdx = fnMatch.index;
-				const afterHeader = text.substring(matchIdx, matchIdx + 20000000);
-				const sepIdx = afterHeader.search(/\r?\n\r?\n/);
-				if (sepIdx !== -1) {
-					const payloadSection =
-						afterHeader.substring(sepIdx + 2).split(/\r?\n--/)[0] || "";
-					const cleanBase64 = payloadSection.replace(/[^A-Za-z0-9+/=]/g, "");
-					if (cleanBase64.length > 40) {
-						try {
-							const buf = Buffer.from(cleanBase64, "base64");
-							if (buf.length > 0) {
-								let ct = "application/octet-stream";
-								const fnLower = fn.toLowerCase();
-								if (fnLower.endsWith(".zip")) ct = "application/zip";
-								else if (fnLower.endsWith(".pdf")) ct = "application/pdf";
-								parsed.attachments.push({
-									filename: fn,
-									contentType: ct,
-									data: buf,
-								});
-							}
-						} catch (e) {}
+					const matchIdx = fnMatch.index;
+					const endIdx = Math.min(text.length, matchIdx + 3000000);
+					const afterHeader = text.substring(matchIdx, endIdx);
+					const sepIdx = afterHeader.search(/\r?\n\r?\n/);
+					if (sepIdx !== -1) {
+						const payloadSection =
+							afterHeader.substring(sepIdx + 2).split(/\r?\n--/)[0] || "";
+						const cleanBase64 = payloadSection.replace(/[^A-Za-z0-9+/=]/g, "");
+						if (cleanBase64.length > 40) {
+							try {
+								const buf = Buffer.from(cleanBase64, "base64");
+								if (buf.length > 0) {
+									let ct = "application/octet-stream";
+									const fnLower = fn.toLowerCase();
+									if (fnLower.endsWith(".zip")) ct = "application/zip";
+									else if (fnLower.endsWith(".pdf")) ct = "application/pdf";
+									parsed.attachments.push({
+										filename: fn,
+										contentType: ct,
+										data: buf,
+									});
+								}
+							} catch (e) {}
+						}
 					}
 				}
+			} catch (scannerErr) {
+				console.error(
+					"[InboxService] Fallback attachment scanner error:",
+					scannerErr,
+				);
 			}
-		} catch (scannerErr) {
-			console.error(
-				"[InboxService] Fallback attachment scanner error:",
-				scannerErr,
-			);
 		}
 
 		if (!body) {
