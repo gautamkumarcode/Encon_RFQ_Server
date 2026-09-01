@@ -996,9 +996,14 @@ export class InboxService {
 			const searchCmd = "SEARCH ALL";
 			console.log(`[InboxService] Running search command: ${searchCmd}...`);
 			const searchRes = await imap.sendCommand(searchCmd);
-			const match = searchRes.match(/\* SEARCH (.*)\r\n/);
-			const allMsgNums =
-				match && match[1] ? match[1].trim().split(/\s+/).filter(Boolean) : [];
+			const allMsgNums: string[] = [];
+			const searchMatches = [...searchRes.matchAll(/\*\s+SEARCH\s+([^\r\n]+)/gi)];
+			for (const m of searchMatches) {
+				if (m[1]) {
+					const lineNums = m[1].trim().split(/\s+/).filter((n) => /^\d+$/.test(n));
+					allMsgNums.push(...lineNums);
+				}
+			}
 
 			const defaultLimit = curatedMailbox() ? 0 : 50;
 			const fetchLimit =
