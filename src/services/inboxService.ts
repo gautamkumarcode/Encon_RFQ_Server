@@ -495,7 +495,7 @@ export function extractMimeWithAttachments(rawMime: string): {
 										data: buf,
 									});
 								}
-							} catch (e) {}
+							} catch (e) { }
 						}
 					}
 				}
@@ -590,6 +590,24 @@ function originalSender(body: string): [string, string] {
 	return fallback;
 }
 
+function isInternalName(name: string): boolean {
+	if (!name) return false;
+	const lower = name.toLowerCase().trim();
+	const internalKeywords = [
+		"nutan",
+		"shikha",
+		"west",
+		"encon",
+		"mdo",
+		"admin",
+		"thermal",
+		'co',
+		"pm",
+		"puneet"
+	];
+	return internalKeywords.some((k) => lower.includes(k));
+}
+
 export function resolveSender(
 	subject: string,
 	fromName: string,
@@ -602,17 +620,22 @@ export function resolveSender(
 	const isRelay = isInternalAddr(fromEmail);
 
 	let finalSub = subject;
-	let finalName = fromName;
+	let finalName = isInternalAddr(fromEmail) || isInternalName(fromName) ? "" : fromName;
 	let finalEmail = fromEmail;
 
 	if (isFwd || isRelay) {
 		const [oName, oEmail] = originalSender(body);
 		if (oEmail && !isInternalAddr(oEmail)) {
 			finalEmail = oEmail;
-			finalName = oName || fromName;
+			finalName = oName && !isInternalName(oName) ? oName : "";
 			finalSub = (subject || "").replace(/^\s*(fwd|fw)\s*:\s*/i, "").trim();
 		}
 	}
+
+	if (!isInternalAddr(finalEmail) && isInternalName(finalName)) {
+		finalName = "";
+	}
+
 	return [finalSub, finalName, finalEmail];
 }
 
@@ -686,7 +709,7 @@ function parseMimeMessage(raw: string): ParsedEmail {
 				if (!isNaN(d.getTime())) {
 					dateStr = d.toISOString().split("T")[0];
 				}
-			} catch (e) {}
+			} catch (e) { }
 		}
 
 		const subject = decodeHeader(headers["subject"] || "");
@@ -731,7 +754,7 @@ class SimpleImapClient {
 	constructor(
 		private host: string,
 		private port: number,
-	) {}
+	) { }
 
 	public isConnected(): boolean {
 		return Boolean(this.client && !this.client.destroyed && this.client.writable);
@@ -741,7 +764,7 @@ class SimpleImapClient {
 		if (this.client) {
 			try {
 				if (!this.client.destroyed) this.client.destroy();
-			} catch (e) {}
+			} catch (e) { }
 		}
 		this.buffer = "";
 		return new Promise((resolve, reject) => {
@@ -912,11 +935,11 @@ class SimpleImapClient {
 		if (this.client) {
 			try {
 				if (!this.client.destroyed) {
-					this.sendCommand("LOGOUT", 2000).catch(() => {});
+					this.sendCommand("LOGOUT", 2000).catch(() => { });
 					this.client.end();
 					this.client.destroy();
 				}
-			} catch (e) {}
+			} catch (e) { }
 		}
 	}
 }
@@ -948,17 +971,28 @@ export class InboxService {
 	}
 
 	public static async cleanDbEmailBodies(): Promise<number> {
-		const enquiries: any[] = await Enquiry.find({ emailBody: { $ne: "" } })
-			.select("_id emailBody")
+		const enquiries: any[] = await Enquiry.find()
+			.select("_id email emailBody contactPerson companyName")
 			.lean();
 		let cleanedCount = 0;
 		for (const e of enquiries) {
+			const updates: any = {};
 			if (e.emailBody) {
 				const cleaned = extractCleanEmailBody(e.emailBody);
 				if (cleaned !== e.emailBody) {
-					await Enquiry.findByIdAndUpdate(e._id, { emailBody: cleaned });
-					cleanedCount++;
+					updates.emailBody = cleaned;
 				}
+			}
+			// Clean up misassigned internal employee names from client enquiries
+			if (e.email && !isInternalAddr(e.email) && isInternalName(e.contactPerson)) {
+				updates.contactPerson = "";
+				if (isInternalName(e.companyName)) {
+					updates.companyName = companyFromEmail(e.email) || "Email enquiry";
+				}
+			}
+			if (Object.keys(updates).length > 0) {
+				await Enquiry.findByIdAndUpdate(e._id, updates);
+				cleanedCount++;
 			}
 		}
 		return cleanedCount;
@@ -1366,8 +1400,8 @@ export class InboxService {
 						att.contentType,
 						att.data,
 						"email",
-					).catch(() => {});
-				} catch (e) {}
+					).catch(() => { });
+				} catch (e) { }
 			}
 
 			if (mid) {
@@ -1375,7 +1409,7 @@ export class InboxService {
 					{ messageId: mid },
 					{ messageId: mid },
 					{ upsert: true },
-				).catch(() => {});
+				).catch(() => { });
 				knownIds.add(mid);
 			}
 			threadsMap.set(root || mid, existingTarget);
@@ -1389,7 +1423,7 @@ export class InboxService {
 					{ messageId: mid },
 					{ messageId: mid },
 					{ upsert: true },
-				).catch(() => {});
+				).catch(() => { });
 				knownIds.add(mid);
 			}
 			return { created: false, threaded: false, skippedNoise: true };
@@ -1460,8 +1494,8 @@ export class InboxService {
 					att.contentType,
 					att.data,
 					"email",
-				).catch(() => {});
-			} catch (e) {}
+				).catch(() => { });
+			} catch (e) { }
 		}
 
 		if (mid) {
@@ -1469,7 +1503,7 @@ export class InboxService {
 				{ messageId: mid },
 				{ messageId: mid },
 				{ upsert: true },
-			).catch(() => {});
+			).catch(() => { });
 			knownIds.add(mid);
 		}
 
