@@ -79,7 +79,7 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
     const refreshToken = generateRefreshToken(payload);
 
     // Non-blocking background updates for speed
-    User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() }).catch(() => {});
+    User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() }).catch(() => { });
 
     logActivity({
       userId: user._id.toString(),
@@ -88,7 +88,7 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
       details: { role: roleName },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    }).catch(() => {});
+    }).catch(() => { });
 
     const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || req.headers['x-forwarded-proto'] === 'https';
     const getCookieOptions = (maxAgeMs = 7 * 24 * 60 * 60 * 1000) => ({
@@ -343,16 +343,26 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
 
 export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
   try {
-    const { credential, email: bodyEmail, name: bodyName } = req.body;
+    const { credential, email: bodyEmail } = req.body;
     let email = bodyEmail;
 
     if (credential) {
       try {
+        let tokenAud = '';
+        const parts = credential.split('.');
+        if (parts.length === 3) {
+          try {
+            const tokenPayload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
+            if (tokenPayload.email) email = tokenPayload.email;
+            if (tokenPayload.aud) tokenAud = tokenPayload.aud;
+          } catch (e) { }
+        }
+
         const validAudiences = Array.from(
           new Set(
             [
               (process.env.GOOGLE_CLIENT_ID || '').trim(),
-              (process.env.GDRIVE_OAUTH_CLIENT_ID || '').trim(),
+              tokenAud,
               '770218511201-eigo4o97m5gsqc0g1nshrs0aku4ehp1a.apps.googleusercontent.com',
             ].filter(Boolean)
           )
@@ -363,18 +373,11 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
           audience: validAudiences,
         });
         const payload = ticket.getPayload();
-        if (payload) {
+        if (payload && payload.email) {
           email = payload.email;
         }
       } catch (verifyErr: any) {
         console.warn('⚠️ Google ID Token verification warning:', verifyErr.message);
-        const parts = credential.split('.');
-        if (parts.length === 3) {
-          const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf-8'));
-          if (payload.email) {
-            email = payload.email;
-          }
-        }
       }
     }
 
@@ -415,7 +418,7 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
 
-    User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() }).catch(() => {});
+    User.findByIdAndUpdate(user._id, { lastLoginAt: new Date() }).catch(() => { });
 
     logActivity({
       userId: user._id.toString(),
@@ -424,7 +427,7 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
       details: { role: roleName },
       ipAddress: req.ip,
       userAgent: req.headers['user-agent'],
-    }).catch(() => {});
+    }).catch(() => { });
 
     const isProd = process.env.NODE_ENV === 'production' || process.env.VERCEL === '1' || req.headers['x-forwarded-proto'] === 'https';
     const cookieOpts = {
