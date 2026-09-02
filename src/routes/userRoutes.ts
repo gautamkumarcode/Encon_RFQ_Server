@@ -5,6 +5,7 @@ import {
   updateUser,
   toggleUserStatus,
   resetUserPassword,
+  resendWelcomeEmail,
 } from '../controllers/userController';
 import { authenticateToken, requirePermission, requireRoles } from '../middleware/authMiddleware';
 
@@ -17,5 +18,6 @@ router.post('/', requirePermission('USER_MGMT', 'WRITE'), createUser);
 router.put('/:id', requirePermission('USER_MGMT', 'WRITE'), updateUser);
 router.patch('/:id/status', requirePermission('USER_MGMT', 'WRITE'), toggleUserStatus);
 router.post('/:id/reset-password', requireRoles(['ADMIN']), resetUserPassword);
+router.post('/:id/resend-welcome', requireRoles(['ADMIN']), resendWelcomeEmail);
 
 export default router;

@@ -1,22 +1,27 @@
 import nodemailer from 'nodemailer';
 
-const SMTP_USER = process.env.SMTP_USER || process.env.IMAP_USER || 'rfq@encon.co.in';
-const SMTP_PASS = process.env.SMTP_PASSWORD || process.env.IMAP_PASSWORD || '';
-const SMTP_HOST = process.env.SMTP_HOST || 'smtp.gmail.com';
-const SMTP_PORT = parseInt(process.env.SMTP_PORT || '465', 10);
+function getSmtpConfig() {
+  const user = (process.env.SMTP_USER || process.env.IMAP_USER || '').trim();
+  const pass = (process.env.SMTP_PASSWORD || process.env.IMAP_PASSWORD || '').trim();
+  const host = (process.env.SMTP_HOST || 'smtp.gmail.com').trim();
+  const port = parseInt(process.env.SMTP_PORT || '465', 10);
 
-const transporter = nodemailer.createTransport({
-  host: SMTP_HOST,
-  port: SMTP_PORT,
-  secure: SMTP_PORT === 465,
-  auth: {
-    user: SMTP_USER,
-    pass: SMTP_PASS,
-  },
-  tls: {
-    rejectUnauthorized: false,
-  },
-});
+  return { user, pass, host, port };
+}
+
+function createTransporter(config: ReturnType<typeof getSmtpConfig>) {
+  const auth = config.user && config.pass ? { user: config.user, pass: config.pass } : undefined;
+
+  return nodemailer.createTransport({
+    host: config.host,
+    port: config.port,
+    secure: config.port === 465,
+    ...(auth ? { auth } : {}),
+    tls: {
+      rejectUnauthorized: false,
+    },
+  });
+}
 
 export interface SendAssignmentEmailOptions {
   toEmail: string;
@@ -40,6 +45,12 @@ export async function sendAssignmentEmail(options: SendAssignmentEmailOptions): 
 
   if (!toEmail || !toEmail.includes('@')) {
     console.warn(`⚠️ Cannot send assignment email: Invalid recipient address "${toEmail}"`);
+    return false;
+  }
+
+  const config = getSmtpConfig();
+  if (!config.pass) {
+    console.warn(`⚠️ Cannot send assignment email to ${toEmail}: SMTP_PASSWORD or IMAP_PASSWORD is missing in production environment variables.`);
     return false;
   }
 
@@ -95,8 +106,9 @@ export async function sendAssignmentEmail(options: SendAssignmentEmailOptions): 
   `;
 
   try {
+    const transporter = createTransporter(config);
     const info = await transporter.sendMail({
-      from: `"ENCON Command Center" <${SMTP_USER}>`,
+      from: `"ENCON Command Center" <${config.user}>`,
       to: toEmail,
       subject: subject,
       html: htmlContent,
@@ -128,7 +140,15 @@ export async function sendWelcomeUserEmail(options: SendWelcomeEmailOptions): Pr
     return false;
   }
 
+  const config = getSmtpConfig();
+  if (!config.pass) {
+    console.warn(`⚠️ Cannot send welcome email to ${toEmail}: SMTP_PASSWORD or IMAP_PASSWORD is missing in production environment variables.`);
+    return false;
+  }
+
   const subject = `[ENCON Command Center] Your Account Has Been Created`;
+
+  const portalUrl = (process.env.FRONTEND_URL || 'https://dashboard.encon.in').split(',')[0].trim() || 'https://dashboard.encon.in';
 
   const htmlContent = `
     <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
@@ -164,9 +184,18 @@ export async function sendWelcomeUserEmail(options: SendWelcomeEmailOptions): Pr
         </table>
       </div>
 
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${portalUrl}" target="_blank" style="background-color: #06b6d4; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(6, 182, 212, 0.3);">
+          🚀 Click Here to Login to ENCON Portal ↗
+        </a>
+        <p style="font-size: 12px; color: #94a3b8; text-align: center; margin-top: 10px;">
+          Portal Link: <a href="${portalUrl}" target="_blank" style="color: #38bdf8; text-decoration: underline;">${portalUrl}</a>
+        </p>
+      </div>
+
       <div style="background-color: rgba(2, 132, 199, 0.1); border: 1px solid rgba(2, 132, 199, 0.3); border-radius: 12px; padding: 14px; margin: 20px 0; text-align: center;">
         <p style="margin: 0; font-size: 13px; color: #38bdf8;">
-          💡 You can sign in using your temporary password or click <strong>"Sign in with Google"</strong> using your company email address!
+          💡 You can sign in using your credentials above or click <strong>"Sign in with Google"</strong> using your company email address!
         </p>
       </div>
 
@@ -177,8 +206,9 @@ export async function sendWelcomeUserEmail(options: SendWelcomeEmailOptions): Pr
   `;
 
   try {
+    const transporter = createTransporter(config);
     const info = await transporter.sendMail({
-      from: `"ENCON Command Center" <${SMTP_USER}>`,
+      from: `"ENCON Command Center" <${config.user}>`,
       to: toEmail,
       subject: subject,
       html: htmlContent,

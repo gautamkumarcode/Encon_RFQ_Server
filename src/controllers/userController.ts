@@ -18,8 +18,10 @@ const createUserSchema = z.object({
 
 const updateUserSchema = z.object({
   name: z.string().min(2).optional(),
+  email: z.string().email().optional(),
   roleId: z.string().optional(),
   status: z.enum(['ACTIVE', 'DISABLED']).optional(),
+  applicationIds: z.array(z.string()).optional(),
 });
 
 export const getUsers = async (req: AuthenticatedRequest, res: Response) => {
@@ -134,15 +136,43 @@ export const createUser = async (req: AuthenticatedRequest, res: Response) => {
 export const updateUser = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { id } = req.params;
-    const body = updateUserSchema.parse(req.body);
+    const { name, email, roleId, status, applicationIds } = updateUserSchema.parse(req.body);
 
-    const updatedUser: any = await User.findByIdAndUpdate(id, body, { new: true }).populate('roleId');
+    const updatePayload: any = {};
+    if (name) updatePayload.name = name;
+    if (email) {
+      const existing = await User.findOne({ email: email.toLowerCase(), _id: { $ne: id } });
+      if (existing) {
+        return res.status(400).json({ success: false, message: 'Another user already uses this email' });
+      }
+      updatePayload.email = email.toLowerCase();
+    }
+    if (roleId) updatePayload.roleId = roleId;
+    if (status) updatePayload.status = status;
+
+    const updatedUser: any = await User.findByIdAndUpdate(id, updatePayload, { new: true }).populate('roleId');
+    if (!updatedUser) {
+      return res.status(404).json({ success: false, message: 'User not found' });
+    }
+
+    if (applicationIds !== undefined) {
+      await UserApplication.deleteMany({ userId: id });
+      if (applicationIds.length > 0) {
+        await UserApplication.insertMany(
+          applicationIds.map((appId: string) => ({
+            userId: id,
+            applicationId: appId,
+            grantedBy: req.user?.email || 'ADMIN',
+          }))
+        );
+      }
+    }
 
     await logActivity({
       userId: req.user?.userId,
       userEmail: req.user?.email || 'SYSTEM',
       action: 'USER_UPDATED',
-      details: { targetUserId: id, updates: body },
+      details: { targetUserId: id, updates: req.body },
     });
 
     return res.json({
@@ -204,5 +234,37 @@ export const resetUserPassword = async (req: AuthenticatedRequest, res: Response
     return res.json({ success: true, message: 'User password has been reset successfully' });
   } catch (error: any) {
     return res.status(400).json({ success: false, message: error.message });
+  }
+};
+
+export const resendWelcomeEmail = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const { id } = req.params;
+    const user: any = await User.findById(id).populate('roleId');
+    if (!user) return res.status(404).json({ success: false, message: 'User not found' });
+
+    const roleName = user.roleId?.name || 'USER';
+
+    const sent = await sendWelcomeUserEmail({
+      toEmail: user.email,
+      userName: user.name,
+      roleName,
+      createdByAdminEmail: req.user?.email || 'Administrator',
+    });
+
+    if (!sent) {
+      return res.status(500).json({ success: false, message: 'Failed to send welcome email. Please verify SMTP credentials in environment settings.' });
+    }
+
+    await logActivity({
+      userId: req.user?.userId,
+      userEmail: req.user?.email || 'SYSTEM',
+      action: 'WELCOME_EMAIL_RESENT',
+      details: { targetUserId: id, targetEmail: user.email },
+    });
+
+    return res.json({ success: true, message: `Welcome invitation email resent successfully to ${user.email}` });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
   }
 };
