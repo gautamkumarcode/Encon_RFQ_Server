@@ -21,7 +21,7 @@ export function getGDriveConfig() {
   if (parentFolderId === '.' || !/^[a-zA-Z0-9_-]+$/.test(parentFolderId)) {
     parentFolderId = '';
   }
-  const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQ Tracker').trim();
+  const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQ_Dev').trim();
   const shareWithEmails = (process.env.GDRIVE_SHARE_WITH || '').split(',').map((e) => e.trim()).filter(Boolean);
 
   const isConfigured = Boolean(clientId && clientSecret && refreshToken) || Boolean(parentFolderId);

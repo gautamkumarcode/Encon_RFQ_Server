@@ -589,7 +589,7 @@ export const getEnquiries = async (
 		} else if (tabName === "incomplete") {
 			where.status = { $regex: "^Incomplete$", $options: "i" };
 		} else if (tabName === "review") {
-			where.status = { $regex: "^(Under review|Verified)$", $options: "i" };
+			where.status = { $regex: "^(Under review|Verified|Approved|Offer Sent|PO Received)$", $options: "i" };
 		} else if (tabName === "approved") {
 			where.status = { $regex: "^Approved$", $options: "i" };
 		} else if (tabName === "offersent") {
