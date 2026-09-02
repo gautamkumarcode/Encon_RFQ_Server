@@ -1478,7 +1478,70 @@ export const approveReview = async (
 				.json({ success: false, message: "Invalid enquiry ID" });
 		}
 
+		const { statusAction, remarks, offerNo: bodyOfferNo, offerDate: bodyOfferDate } = req.body;
 		const userInfo = await getAuthenticatedUserInfo(req);
+
+		const existing: any = await Enquiry.findById(id);
+		if (!existing)
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+
+		// ── REQUEST CHANGES / REJECT ──────────────────────────────────────────
+		// Any reviewer (GM, CO, Production, Admin) can reject or request changes.
+		// Status is reset back to "Open" so the sales/tech team can revise.
+		if (statusAction === "REQUEST_CHANGES") {
+			if (!canReviewRfq(userInfo || req.user)) {
+				return res.status(403).json({
+					success: false,
+					message: "Access Denied: You do not have permission to request changes on RFQs.",
+				});
+			}
+
+			const reviewerName = userInfo?.name || req.user?.email || "Reviewer";
+			const remarksNote = remarks ? ` [Changes Requested by ${reviewerName}: ${remarks}]` : "";
+
+			const updated: any = await Enquiry.findByIdAndUpdate(
+				id,
+				{
+					status: "Open",
+					verifiedBy: null,
+					verifiedAt: null,
+					remarks: existing.remarks
+						? `${existing.remarks}${remarksNote}`
+						: remarks || "",
+				},
+				{ new: true },
+			);
+
+			await Notification.create({
+				title: "Changes Requested / RFQ Rejected",
+				message: `RFQ ${updated.rfqId} (${updated.companyName}) was sent back for revision by ${reviewerName}. Reason: ${remarks || "No remarks provided."}`,
+				type: "SYSTEM",
+			});
+
+			await logActivity({
+				userId: req.user?.userId,
+				userEmail: req.user?.email || "SYSTEM",
+				action: "RFQ_CHANGES_REQUESTED",
+				details: {
+					enquiryId: id,
+					rfqId: updated.rfqId,
+					requestedBy: reviewerName,
+					remarks: remarks || "",
+					previousStatus: existing.status,
+				},
+			});
+
+			return res.json({
+				success: true,
+				message: "Changes requested successfully. Status reset to Open for revision.",
+				data: { ...updated.toObject(), id: updated._id.toString() },
+			});
+		}
+
+		// ── FINAL APPROVE ─────────────────────────────────────────────────────
+		// Only Admin can grant final approval.
 		if (!canFinalApproveRfq(userInfo || req.user)) {
 			return res.status(403).json({
 				success: false,
@@ -1487,16 +1550,10 @@ export const approveReview = async (
 			});
 		}
 
-		const existing: any = await Enquiry.findById(id);
-		if (!existing)
-			return res
-				.status(404)
-				.json({ success: false, message: "Enquiry not found" });
-
 		const finalOfferNo =
-			req.body.offerNo || existing.offerNo || existing.clientRefNo || "";
+			bodyOfferNo || existing.offerNo || existing.clientRefNo || "";
 		const finalOfferDate =
-			req.body.offerDate || existing.offerDate || getTodayIso();
+			bodyOfferDate || existing.offerDate || getTodayIso();
 		const approverName = userInfo?.name || req.user?.email || "Admin";
 
 		const updated: any = await Enquiry.findByIdAndUpdate(
@@ -1538,6 +1595,7 @@ export const approveReview = async (
 		return res.status(400).json({ success: false, message: error.message });
 	}
 };
+
 
 export const uploadAttachment = async (
 	req: AuthenticatedRequest,
