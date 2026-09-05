@@ -11,8 +11,8 @@ import { Notification } from "../models/Notification";
 import { User } from "../models/User";
 import { sendAssignmentEmail } from "../services/emailService";
 import {
-  ensureEnquiryDriveFolder,
-  mirrorAttachmentToDrive,
+	ensureEnquiryDriveFolder,
+	mirrorAttachmentToDrive,
 } from "../services/gdriveService";
 import { InboxService, cleanMimeRemnants } from "../services/inboxService";
 import { logActivity } from "../utils/auditLogger";
@@ -76,7 +76,7 @@ function extractTextFromDocx(buffer: Buffer): string {
 								" " +
 								matches.map((t) => t.replace(/<[^>]+>/g, "").trim()).join(" ");
 						}
-					} catch (e) {}
+					} catch (e) { }
 				}
 				offset += 30 + nameLen + extraLen + compSize;
 			} else {
@@ -99,7 +99,7 @@ export const extractOfferDetailsFromDoc = async (
 	try {
 		if (lowerFn.endsWith(".pdf") || !lowerFn.includes(".")) {
 			if (typeof (globalThis as any).DOMMatrix === "undefined") {
-				(globalThis as any).DOMMatrix = class DOMMatrix {};
+				(globalThis as any).DOMMatrix = class DOMMatrix { };
 			}
 			const pdfParseFunc =
 				typeof pdfParse === "function" ? pdfParse : require("pdf-parse");
@@ -827,13 +827,13 @@ export const getOfferMapping = async (
 		const userScopeWhere =
 			!isFullAccess && userInfo
 				? {
-						$or: [
-							{ assignedTo: userInfo.name },
-							{ assignedTo: userInfo.email },
-							{ salesResponsibility: userInfo.name },
-							{ technical: userInfo.name },
-						],
-					}
+					$or: [
+						{ assignedTo: userInfo.name },
+						{ assignedTo: userInfo.email },
+						{ salesResponsibility: userInfo.name },
+						{ technical: userInfo.name },
+					],
+				}
 				: {};
 
 		const where: any = { ...userScopeWhere };
@@ -903,13 +903,13 @@ export const getAnalyticsDashboard = async (
 		const userScopeWhere =
 			!isFullAccess && userInfo
 				? {
-						$or: [
-							{ assignedTo: userInfo.name },
-							{ assignedTo: userInfo.email },
-							{ salesResponsibility: userInfo.name },
-							{ technical: userInfo.name },
-						],
-					}
+					$or: [
+						{ assignedTo: userInfo.name },
+						{ assignedTo: userInfo.email },
+						{ salesResponsibility: userInfo.name },
+						{ technical: userInfo.name },
+					],
+				}
 				: {};
 
 		const enquiries: any[] = await Enquiry.find(userScopeWhere)
@@ -937,8 +937,8 @@ export const getAnalyticsDashboard = async (
 		const avgOpenAge =
 			activeDaysOpen.length > 0
 				? Math.round(
-						activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
-					)
+					activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
+				)
 				: 0;
 
 		const summary = {
@@ -1191,14 +1191,14 @@ export const createEnquiry = async (
 				enquiry,
 				enquiry.assignedTo,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 		if (enquiry.technical && enquiry.technical !== enquiry.assignedTo) {
 			createAssignmentNotification(
 				enquiry,
 				enquiry.technical,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 
 		const cleanData = {
@@ -1339,7 +1339,7 @@ export const updateEnquiry = async (
 				updated,
 				body.assignedTo,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 
 		return res.json({
@@ -1627,12 +1627,12 @@ export const uploadAttachment = async (
 		const extracted: ExtractedOfferMetadata = isOfferDoc
 			? await extractOfferDetailsFromDoc(file.buffer, file.originalname)
 			: {
-					enquiryNo: "",
-					offerNo: "",
-					offerDate: "",
-					clientName: "",
-					projectName: "",
-				};
+				enquiryNo: "",
+				offerNo: "",
+				offerDate: "",
+				clientName: "",
+				projectName: "",
+			};
 
 		// 2. Intelligent RFQ Resolution by Enquiry No / Client Name
 		let targetEnquiryId = requestedId;
@@ -1772,7 +1772,7 @@ export const autoMapOfferDocApi = async (
 			file.mimetype,
 			file.buffer,
 			"offer",
-		).catch(() => {});
+		).catch(() => { });
 
 		return res.json({
 			success: true,
@@ -1873,7 +1873,7 @@ export const inlineUpdateField = async (
 		}
 
 		const { field, value } = req.body;
-		const allowed = ["status", "assignedTo", "type", "offerNo", "offerDate"];
+		const allowed = ["status", "assignedTo", "type", "offerNo", "offerDate", "remarks", "followupRemarks", "pendingRemarks"];
 		if (!allowed.includes(field)) {
 			return res.status(400).json({
 				success: false,
@@ -1903,6 +1903,27 @@ export const inlineUpdateField = async (
 		}
 		if (field === "offerDate" && value) {
 			updateData.offerDate = parseIsoDate(value);
+		}
+
+		if ((field === "remarks" || field === "followupRemarks" || field === "pendingRemarks") && value && value.trim()) {
+			let authorName = req.user?.email || "User";
+			let authorEmail = req.user?.email || "";
+			if (req.user?.userId) {
+				const u: any = await User.findById(req.user.userId).lean();
+				if (u && u.name) {
+					authorName = `${u.name} (${u.email})`;
+					authorEmail = u.email;
+				}
+			}
+			const currentFollowups = Array.isArray(existing.followups) ? existing.followups : [];
+			currentFollowups.push({
+				type: "Remark",
+				note: value.trim(),
+				author: authorName,
+				authorEmail: authorEmail,
+				createdAt: new Date().toISOString(),
+			});
+			updateData.followups = currentFollowups;
 		}
 
 		const updated: any = await Enquiry.findByIdAndUpdate(id, updateData, {
@@ -1945,6 +1966,86 @@ export const inlineUpdateField = async (
 		});
 	} catch (error: any) {
 		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+export const addFollowup = async (
+	req: AuthenticatedRequest,
+	res: Response,
+) => {
+	try {
+		const id = req.params.id;
+		if (!id) {
+			return res
+				.status(400)
+				.json({ success: false, message: "Invalid enquiry ID" });
+		}
+
+		const { type = "Followup", note, nextActionDate, lastCallDate } = req.body;
+		if (!note || !note.trim()) {
+			return res
+				.status(400)
+				.json({ success: false, message: "Follow-up note text is required" });
+		}
+
+		const existing: any = await Enquiry.findById(id);
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		let authorName = req.user?.email || "User";
+		let authorEmail = req.user?.email || "";
+		if (req.user?.userId) {
+			const u: any = await User.findById(req.user.userId).lean();
+			if (u && u.name) {
+				authorName = `${u.name} (${u.email})`;
+				authorEmail = u.email;
+			}
+		}
+
+		const followupEntry = {
+			type: type || "Followup",
+			note: note.trim(),
+			author: authorName,
+			authorEmail: authorEmail,
+			createdAt: new Date().toISOString(),
+			nextActionDate: nextActionDate || "",
+		};
+
+		if (!Array.isArray(existing.followups)) {
+			existing.followups = [];
+		}
+		existing.followups.push(followupEntry);
+
+		existing.remarks = note.trim();
+		existing.followupRemarks = note.trim();
+		if (nextActionDate) existing.nextActionDate = nextActionDate;
+		if (lastCallDate || type === "Call") existing.lastCallDate = lastCallDate || getTodayIso();
+
+		await existing.save();
+
+		await logActivity({
+			userId: req.user?.userId,
+			userEmail: req.user?.email || "User",
+			action: "RFQ_FOLLOWUP_ADDED",
+			details: {
+				enquiryId: id,
+				rfqId: existing.rfqId,
+				type,
+				note: note.trim(),
+				author: authorName,
+			},
+		});
+
+		return res.json({
+			success: true,
+			message: "Follow-up recorded successfully",
+			data: { ...existing.toObject(), id: existing._id.toString() },
+		});
+	} catch (error: any) {
+		return res.status(500).json({ success: false, message: error.message });
 	}
 };
 
@@ -2235,7 +2336,7 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 					file.mimetype || "application/octet-stream",
 					file.buffer,
 					kind,
-				).catch(() => {});
+				).catch(() => { });
 				attachedFiles.push({
 					id: att._id.toString(),
 					filename: att.filename,
@@ -2513,7 +2614,7 @@ export const syncInboxApi = async (
 					userEmail: triggeredBy,
 					action: "INBOX_SYNC",
 					details: stats,
-				}).catch(() => {});
+				}).catch(() => { });
 			} catch (bgErr: any) {
 				console.error(
 					"❌ [syncInboxApi Background Error]:",
