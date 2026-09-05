@@ -80,6 +80,23 @@ export interface ParsedEmail {
 }
 
 const INTERNAL_DOMAINS = ["encon.co.in", "encon.in"];
+const GENERIC_DOMAINS = new Set([
+	"gmail.com",
+	"yahoo.com",
+	"yahoo.co.in",
+	"hotmail.com",
+	"outlook.com",
+	"rediffmail.com",
+	"icloud.com",
+	"ymail.com",
+	"gmx.com",
+	"live.com",
+	"zoho.com",
+	"proton.me",
+	"protonmail.com",
+	"aol.com",
+	"mail.com",
+]);
 const GENERIC_NAMES = new Set([
 	"purchase",
 	"purchasing",
@@ -410,6 +427,8 @@ export function cleanMimeRemnants(text: string): string {
 			)
 			.replace(/^--?=?[_a-zA-Z0-9.-]+.*$/gm, "")
 			.replace(/_NextPart_[a-zA-Z0-9._-]+(?:--)?/g, "")
+			.replace(/\b[A-F0-9]{10,}_?\b/g, "")
+			.replace(/--+[a-zA-Z0-9._=-]+/g, "")
 			.replace(
 				/^\s*(?:Content-Type|Content-Transfer-Encoding|Content-Disposition|Content-ID|MIME-Version|X-Attachment-Id|X-GM-MSGID|X-Google-DKIM):\s*.*$/gim,
 				"",
@@ -558,7 +577,12 @@ function decodeHeader(headerStr: string): string {
 
 function companyFromEmail(addr: string): string {
 	if (!addr || !addr.includes("@")) return "";
-	const parts = addr.split("@")[1].split(".");
+	const lowerAddr = addr.trim().toLowerCase();
+	if (isInternalAddr(lowerAddr)) return "";
+	const domain = lowerAddr.split("@")[1];
+	if (!domain || GENERIC_DOMAINS.has(domain)) return "";
+
+	const parts = domain.split(".");
 	while (
 		parts.length > 1 &&
 		DOMAIN_DROP.has(parts[parts.length - 1].toLowerCase())
@@ -566,27 +590,104 @@ function companyFromEmail(addr: string): string {
 		parts.pop();
 	}
 	const name = parts.length ? parts[parts.length - 1] : "";
+	if (!name || isInternalName(name)) return "";
 	return name.replace(/-/g, " ").replace(/\b\w/g, (l) => l.toUpperCase());
 }
 
-function originalSender(body: string): [string, string] {
-	let fallback: [string, string] = ["", ""];
-	const regex = /^from:\s*(.+)$/gim;
-	let match;
-	while ((match = regex.exec(body || "")) !== null) {
-		const line = match[1].trim();
-		const emailMatch = line.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-		if (!emailMatch) continue;
-		const addr = emailMatch[0];
-		let name = line.split("<")[0].trim().replace(/^"|"$/g, "");
-		if (name.includes("@") || !name) name = "";
+export function parseForwardedSender(text: string): [string, string] {
+	if (!text) return ["", ""];
 
-		if (isInternalAddr(addr)) {
-			if (!fallback[1]) fallback = [name, addr];
+	// 1. Decode HTML entities FIRST so &lt; and &gt; become < and >
+	let cleanText = text
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&amp;/gi, "&")
+		.replace(/&nbsp;/gi, " ");
+
+	// 2. Protect angle-bracketed email addresses (e.g. <user@domain.com>) from HTML tag stripping
+	cleanText = cleanText.replace(/<([\w.+-]+@[\w.-]+\.[a-zA-Z]{2,})>/g, "___EMAIL_START___$1___EMAIL_END___");
+
+	// 3. Strip HTML tags
+	cleanText = cleanText
+		.replace(/<style[\s\S]*?<\/style>/gi, "")
+		.replace(/<script[\s\S]*?<\/script>/gi, "")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(div|p|tr|li|h[1-6])>/gi, "\n")
+		.replace(/<[^>]+>/g, " ")
+		.replace(/___EMAIL_START___/g, "<")
+		.replace(/___EMAIL_END___/g, ">");
+
+	const lines = cleanText.split(/\r?\n/);
+	let fallback: [string, string] = ["", ""];
+
+	for (const line of lines) {
+		const trimmed = line.trim();
+
+		// Match "From:", "De:", "Von:", "Forwarded message from:", "Sent by:"
+		const fromMatch = trimmed.match(/^(?:>|\s)*(?:from|de|von|forwarded message from|sent by)\s*:\s*(.+)$/i);
+		if (!fromMatch) {
+			// Also match inline "On <Date> ... <email> wrote:" header
+			const wroteMatch = trimmed.match(/^(?:>|\s)*on\s+.*?\s+wrote\s*:\s*$/i) || trimmed.match(/^(?:>|\s)*on\s+.*?\s+([^\s<]+@[^\s>]+)\s+wrote\s*:/i);
+			if (wroteMatch) {
+				const emailM = trimmed.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+				if (emailM && !isInternalAddr(emailM[0])) {
+					let nameM = "";
+					const angleM = trimmed.match(/on\s+.*?\s+([^<]+)<[^>]+>/i);
+					if (angleM && angleM[1]) nameM = angleM[1].replace(/^(?:On|at|\d{1,4}|[\s,:-])+/i, "").trim();
+					return [isInternalName(nameM) ? "" : nameM, emailM[0].toLowerCase().trim()];
+				}
+			}
 			continue;
 		}
-		return [name, addr];
+
+		const content = fromMatch[1].trim();
+
+		// Extract email
+		const emailMatch = content.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/);
+		if (!emailMatch) continue;
+
+		const email = emailMatch[0].toLowerCase().trim();
+
+		// Extract name
+		let name = "";
+		const angleMatch = content.match(/^(.*?)\s*<[^>]+>/);
+		const mailtoMatch = content.match(/^(.*?)\s*\[\s*mailto\s*:\s*[^\]]+\s*\]/i);
+
+		if (angleMatch && angleMatch[1].trim()) {
+			name = angleMatch[1].trim().replace(/^["'\s]+|["'\s]+$/g, "");
+		} else if (mailtoMatch && mailtoMatch[1].trim()) {
+			name = mailtoMatch[1].trim().replace(/^["'\s]+|["'\s]+$/g, "");
+		} else {
+			const parts = content.split(emailMatch[0]);
+			if (parts[0] && parts[0].trim()) {
+				name = parts[0].trim().replace(/^["'\s<(\[]+|["'\s>)\]]+$/g, "");
+			}
+		}
+
+		if (name.toLowerCase().includes("from:") || name.toLowerCase().includes("de:") || name.includes("@") || isInternalName(name)) {
+			name = "";
+		}
+
+		if (isInternalAddr(email)) {
+			if (!fallback[1]) fallback = [name, email];
+			continue;
+		}
+
+		return [name, email];
 	}
+
+	// Fallback: If no external email was found in From: lines, scan cleanText for any non-internal, non-ignored email address
+	if (!fallback[1] || isInternalAddr(fallback[1])) {
+		const allEmails = cleanText.match(/[\w.+-]+@[\w.-]+\.[a-zA-Z]{2,}/g) || [];
+		const ignoreEmails = ignoreSubstrings();
+		for (const em of allEmails) {
+			const lower = em.toLowerCase().trim();
+			if (!isInternalAddr(lower) && !ignoreEmails.some((ig) => lower.includes(ig))) {
+				return ["", lower];
+			}
+		}
+	}
+
 	return fallback;
 }
 
@@ -601,11 +702,102 @@ function isInternalName(name: string): boolean {
 		"mdo",
 		"admin",
 		"thermal",
-		'co',
+		"co",
 		"pm",
-		"puneet"
+		"puneet",
+		"rfq",
+		"vbm",
 	];
 	return internalKeywords.some((k) => lower.includes(k));
+}
+
+export function extractCustomerDetailsFromBody(
+	body: string,
+	senderEmail: string,
+	senderName: string,
+): { companyName: string; contactPerson: string; mobile: string } {
+	if (!body) {
+		return { companyName: "Email enquiry", contactPerson: "", mobile: "" };
+	}
+
+	let cleanText = body
+		.replace(/&lt;/gi, "<")
+		.replace(/&gt;/gi, ">")
+		.replace(/&amp;/gi, "&")
+		.replace(/&nbsp;/gi, " ")
+		.replace(/<style[\s\S]*?<\/style>/gi, "")
+		.replace(/<script[\s\S]*?<\/script>/gi, "")
+		.replace(/<br\s*\/?>/gi, "\n")
+		.replace(/<\/(div|p|tr|li|h[1-6])>/gi, "\n")
+		.replace(/<[^>]+>/g, " ");
+
+	const lines = cleanText.split(/\r?\n/).map((l) => l.trim()).filter(Boolean);
+
+	let extractedCompany = "";
+	let extractedContact = "";
+	let extractedMobile = "";
+
+	for (const line of lines) {
+		if (!extractedCompany) {
+			const compMatch = line.match(/^(?:company\s*name|company|organization|org|m\/s\.?|firm|unit|factory|client)\s*[:\-]\s*(.+)$/i);
+			if (compMatch && compMatch[1]) {
+				const candidate = compMatch[1].trim().replace(/^["'\s]+|["'\s]+$/g, "");
+				if (candidate && !isInternalName(candidate) && candidate.length > 2 && candidate.length < 100) {
+					extractedCompany = candidate;
+				}
+			}
+		}
+
+		if (!extractedContact) {
+			const contactMatch = line.match(/^(?:contact\s*person|contact\s*name|kind\s*attn|attn|attention|contact)\s*[:\-]\s*(.+)$/i);
+			if (contactMatch && contactMatch[1]) {
+				const candidate = contactMatch[1].trim().replace(/^["'\s]+|["'\s]+$/g, "");
+				if (candidate && !isInternalName(candidate) && !candidate.includes("@") && candidate.length > 2 && candidate.length < 60) {
+					extractedContact = candidate;
+				}
+			}
+		}
+
+		if (!extractedMobile) {
+			const phoneMatch = line.match(/^(?:mobile|phone|tel|cell|mob|ph)\s*[:\-]\s*([\d\s\-+().]{10,})$/i);
+			if (phoneMatch && phoneMatch[1]) {
+				const digits = phoneMatch[1].replace(/\D/g, "");
+				if (digits.length >= 10 && digits.length <= 13) {
+					extractedMobile = phoneMatch[1].trim();
+				}
+			}
+		}
+	}
+
+	let finalCompany = extractedCompany;
+	if (!finalCompany && senderEmail && !isInternalAddr(senderEmail)) {
+		finalCompany = companyFromEmail(senderEmail);
+	}
+	if (!finalCompany && senderName && !isInternalName(senderName) && !GENERIC_NAMES.has(senderName.toLowerCase())) {
+		finalCompany = senderName;
+	}
+	if (!finalCompany || isInternalName(finalCompany)) {
+		finalCompany = "Email enquiry";
+	}
+
+	let finalContact = extractedContact;
+	if (!finalContact && senderName && !isInternalName(senderName)) {
+		finalContact = senderName;
+	}
+
+	let finalMobile = extractedMobile;
+	if (!finalMobile) {
+		const bodyPhone = extractPhone(cleanText);
+		if (bodyPhone) {
+			finalMobile = bodyPhone;
+		}
+	}
+
+	return {
+		companyName: finalCompany,
+		contactPerson: finalContact,
+		mobile: finalMobile,
+	};
 }
 
 export function resolveSender(
@@ -615,8 +807,9 @@ export function resolveSender(
 	body: string,
 ): [string, string, string] {
 	const isFwd =
-		/^\s*(fwd|fw)\s*:/i.test(subject || "") ||
-		(body || "").toLowerCase().includes("forwarded message");
+		/^\s*(fwd|fw|\[fwd\])\s*:/i.test(subject || "") ||
+		(body || "").toLowerCase().includes("forwarded message") ||
+		(body || "").toLowerCase().includes("---------- forwarded");
 	const isRelay = isInternalAddr(fromEmail);
 
 	let finalSub = subject;
@@ -624,15 +817,18 @@ export function resolveSender(
 	let finalEmail = fromEmail;
 
 	if (isFwd || isRelay) {
-		const [oName, oEmail] = originalSender(body);
+		const [oName, oEmail] = parseForwardedSender(body);
 		if (oEmail && !isInternalAddr(oEmail)) {
 			finalEmail = oEmail;
 			finalName = oName && !isInternalName(oName) ? oName : "";
-			finalSub = (subject || "").replace(/^\s*(fwd|fw)\s*:\s*/i, "").trim();
+			finalSub = (subject || "").replace(/^\s*(fwd|fw|\[fwd\])\s*:\s*/gi, "").trim();
 		}
 	}
 
-	if (!isInternalAddr(finalEmail) && isInternalName(finalName)) {
+	if (isInternalAddr(finalEmail)) {
+		finalEmail = "";
+		finalName = "";
+	} else if (isInternalName(finalName)) {
 		finalName = "";
 	}
 
@@ -945,6 +1141,7 @@ class SimpleImapClient {
 }
 
 export class InboxService {
+	private static _isIngesting = false;
 	private static lastIngestStats: IngestStats = {
 		mailbox: "INBOX",
 		includeRead: false,
@@ -972,7 +1169,7 @@ export class InboxService {
 
 	public static async cleanDbEmailBodies(): Promise<number> {
 		const enquiries: any[] = await Enquiry.find()
-			.select("_id email emailBody contactPerson companyName")
+			.select("_id email emailBody contactPerson companyName mobile")
 			.lean();
 		let cleanedCount = 0;
 		for (const e of enquiries) {
@@ -983,13 +1180,31 @@ export class InboxService {
 					updates.emailBody = cleaned;
 				}
 			}
-			// Clean up misassigned internal employee names from client enquiries
-			if (e.email && !isInternalAddr(e.email) && isInternalName(e.contactPerson)) {
-				updates.contactPerson = "";
-				if (isInternalName(e.companyName)) {
-					updates.companyName = companyFromEmail(e.email) || "Email enquiry";
+			// Fix internal employee details assigned as client details
+			const isEmailInternal = isInternalAddr(e.email);
+			const isCompanyInternal = isInternalName(e.companyName);
+			const isContactInternal = isInternalName(e.contactPerson);
+
+			if (isEmailInternal || isCompanyInternal || isContactInternal) {
+				const [sub, fName, fEmail] = resolveSender("", "", e.email || "", e.emailBody || "");
+				const details = extractCustomerDetailsFromBody(e.emailBody || "", fEmail, fName);
+
+				if (isEmailInternal) {
+					updates.email = fEmail && !isInternalAddr(fEmail) ? fEmail : "";
+				}
+				if (isCompanyInternal || (!e.companyName || e.companyName === "Email enquiry")) {
+					if (details.companyName && !isInternalName(details.companyName)) {
+						updates.companyName = details.companyName;
+					}
+				}
+				if (isContactInternal) {
+					updates.contactPerson = details.contactPerson && !isInternalName(details.contactPerson) ? details.contactPerson : "";
+				}
+				if (!e.mobile && details.mobile) {
+					updates.mobile = details.mobile;
 				}
 			}
+
 			if (Object.keys(updates).length > 0) {
 				await Enquiry.findByIdAndUpdate(e._id, updates);
 				cleanedCount++;
@@ -1002,6 +1217,13 @@ export class InboxService {
 		if (!this.isConfigured()) {
 			return 0;
 		}
+
+		if (this._isIngesting) {
+			console.log("⚠️ [InboxService] Ingestion already in progress. Skipping concurrent run.");
+			return 0;
+		}
+
+		this._isIngesting = true;
 
 		const host = (process.env.IMAP_HOST || "imap.gmail.com").trim();
 		const port = parseInt(process.env.IMAP_PORT || "993", 10);
@@ -1236,6 +1458,7 @@ export class InboxService {
 			imap.close();
 			return 0;
 		} finally {
+			this._isIngesting = false;
 			imap.close();
 		}
 	}
@@ -1369,7 +1592,8 @@ export class InboxService {
 
 			await Enquiry.findByIdAndUpdate(existingTarget._id, {
 				emailBody: newBody,
-				dateReceived: m.date || existingTarget.dateReceived,
+				dateReceived: existingTarget.dateReceived || m.date,
+				receivedOn: existingTarget.receivedOn || existingTarget.dateReceived || m.date,
 			});
 
 			for (const att of m.attachments) {
@@ -1418,28 +1642,52 @@ export class InboxService {
 		}
 
 		if (isInternalAddr(finalEmail) && isInternalAddr(m.fromEmail)) {
-			if (mid) {
-				await ProcessedMessage.findOneAndUpdate(
-					{ messageId: mid },
-					{ messageId: mid },
-					{ upsert: true },
-				).catch(() => { });
-				knownIds.add(mid);
+			const hasAttachments = m.attachments && m.attachments.length > 0;
+			const isCurated = curatedMailbox();
+			const matchesRfq = isRfq(m.subject, m.body);
+
+			if (!hasAttachments && !isCurated && !matchesRfq) {
+				if (mid) {
+					await ProcessedMessage.findOneAndUpdate(
+						{ messageId: mid },
+						{ messageId: mid },
+						{ upsert: true },
+					).catch(() => { });
+					knownIds.add(mid);
+				}
+				return { created: false, threaded: false, skippedNoise: true };
 			}
-			return { created: false, threaded: false, skippedNoise: true };
 		}
 
-		let company = companyFromEmail(finalEmail);
-		if (
-			!company &&
-			finalName &&
-			!GENERIC_NAMES.has(finalName.toLowerCase())
-		) {
-			company = finalName;
-		}
-		company = company || finalName || "Email enquiry";
+		const { companyName, contactPerson, mobile } = extractCustomerDetailsFromBody(
+			m.body,
+			finalEmail,
+			finalName,
+		);
 
 		const dateReceived = m.date || new Date().toISOString().split("T")[0];
+
+		// Atomic Concurrency & Content Deduplication Safeguard
+		if (mid) {
+			const existingByMsgId: any = await Enquiry.findOne({ sourceMessageId: mid }).lean();
+			if (existingByMsgId) {
+				console.log(`⚠️ [InboxService] Message ${mid} already created as ${existingByMsgId.rfqId}. Skipping duplicate creation.`);
+				knownIds.add(mid);
+				return { created: false, threaded: true, skippedNoise: false };
+			}
+		}
+
+		const exactDuplicate: any = await Enquiry.findOne({
+			email: finalEmail || "NO_EMAIL",
+			itemDescription: finalSub || "(no subject)",
+			dateReceived: dateReceived,
+		}).lean();
+
+		if (exactDuplicate) {
+			console.log(`⚠️ [InboxService] Exact duplicate enquiry already exists for ${finalEmail} ("${finalSub}"). Linking to ${exactDuplicate.rfqId}.`);
+			if (mid) knownIds.add(mid);
+			return { created: false, threaded: true, skippedNoise: false };
+		}
 
 		const year = new Date().getFullYear().toString();
 		const counter: any = await RfqCounter.findOneAndUpdate(
@@ -1454,10 +1702,10 @@ export class InboxService {
 			rfqId,
 			dateReceived,
 			receivedOn: dateReceived,
-			companyName: company,
-			contactPerson: finalName,
-			mobile: extractPhone(m.body),
-			email: finalEmail,
+			companyName: companyName,
+			contactPerson: contactPerson,
+			mobile: mobile,
+			email: isInternalAddr(finalEmail) ? "" : finalEmail,
 			itemDescription: finalSub || "(no subject)",
 			status: "Open",
 			sourceMessageId: mid,

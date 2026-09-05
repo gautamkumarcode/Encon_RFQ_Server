@@ -10,7 +10,8 @@
     "dev": "npx ts-node-dev --respawn --transpile-only src/server.ts",
     "seed": "ts-node src/scripts/seed.ts",
     "reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
-    "clear-rfq-data": "ts-node src/utils/clearRfqData.ts"
+    "clear-rfq-data": "ts-node src/utils/clearRfqData.ts",
+    "sync-matched-rfqs": "node scripts/sync_matched_rfqs.js"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",
