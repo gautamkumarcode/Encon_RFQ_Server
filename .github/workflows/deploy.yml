@@ -97,6 +97,8 @@ jobs:
             JWT_REFRESH_SECRET=${{ secrets.JWT_REFRESH_SECRET }}
 
             FRONTEND_URL=${{ secrets.FRONTEND_URL }}
+            AUTOMATION_URL=${{ secrets.AUTOMATION_URL }}
+            AUTOMATION_CALLBACK_TOKEN=${{ secrets.AUTOMATION_CALLBACK_TOKEN }}
 
             GOOGLE_CLIENT_ID=${{ secrets.GOOGLE_CLIENT_ID }}
 

@@ -1,5 +1,6 @@
-import mongoose from "mongoose";
+import crypto from "crypto";
 import { Response } from "express";
+import mongoose from "mongoose";
 import pdfParse from "pdf-parse";
 import * as XLSX from "xlsx";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
@@ -14,7 +15,7 @@ import {
 	ensureEnquiryDriveFolder,
 	mirrorAttachmentToDrive,
 } from "../services/gdriveService";
-import { InboxService, cleanMimeRemnants } from "../services/inboxService";
+import { InboxService } from "../services/inboxService";
 import { logActivity } from "../utils/auditLogger";
 
 import zlib from "zlib";
@@ -76,7 +77,7 @@ function extractTextFromDocx(buffer: Buffer): string {
 								" " +
 								matches.map((t) => t.replace(/<[^>]+>/g, "").trim()).join(" ");
 						}
-					} catch (e) { }
+					} catch (e) {}
 				}
 				offset += 30 + nameLen + extraLen + compSize;
 			} else {
@@ -99,7 +100,7 @@ export const extractOfferDetailsFromDoc = async (
 	try {
 		if (lowerFn.endsWith(".pdf") || !lowerFn.includes(".")) {
 			if (typeof (globalThis as any).DOMMatrix === "undefined") {
-				(globalThis as any).DOMMatrix = class DOMMatrix { };
+				(globalThis as any).DOMMatrix = class DOMMatrix {};
 			}
 			const pdfParseFunc =
 				typeof pdfParse === "function" ? pdfParse : require("pdf-parse");
@@ -589,7 +590,10 @@ export const getEnquiries = async (
 		} else if (tabName === "incomplete") {
 			where.status = { $regex: "^Incomplete$", $options: "i" };
 		} else if (tabName === "review") {
-			where.status = { $regex: "^(Under review|Verified|Approved|Offer Sent|PO Received)$", $options: "i" };
+			where.status = {
+				$regex: "^(Under review|Verified|Approved|Offer Sent|PO Received)$",
+				$options: "i",
+			};
 		} else if (tabName === "approved") {
 			where.status = { $regex: "^Approved$", $options: "i" };
 		} else if (tabName === "offersent") {
@@ -760,7 +764,9 @@ export const getEnquiries = async (
 		});
 
 		const activeEnquiries = allEnriched.filter((e) => !isClosed(e.status));
-		const overdueCount = activeEnquiries.filter((e) => (e.daysOpen || 0) >= 30).length;
+		const overdueCount = activeEnquiries.filter(
+			(e) => (e.daysOpen || 0) >= 30,
+		).length;
 		const dueTodayCount = allEnriched.filter((e) => e.followupDue).length;
 		const approvedCount = allEnriched.filter(
 			(e) => (e.status || "").toLowerCase() === "approved",
@@ -827,13 +833,13 @@ export const getOfferMapping = async (
 		const userScopeWhere =
 			!isFullAccess && userInfo
 				? {
-					$or: [
-						{ assignedTo: userInfo.name },
-						{ assignedTo: userInfo.email },
-						{ salesResponsibility: userInfo.name },
-						{ technical: userInfo.name },
-					],
-				}
+						$or: [
+							{ assignedTo: userInfo.name },
+							{ assignedTo: userInfo.email },
+							{ salesResponsibility: userInfo.name },
+							{ technical: userInfo.name },
+						],
+					}
 				: {};
 
 		const where: any = { ...userScopeWhere };
@@ -903,13 +909,13 @@ export const getAnalyticsDashboard = async (
 		const userScopeWhere =
 			!isFullAccess && userInfo
 				? {
-					$or: [
-						{ assignedTo: userInfo.name },
-						{ assignedTo: userInfo.email },
-						{ salesResponsibility: userInfo.name },
-						{ technical: userInfo.name },
-					],
-				}
+						$or: [
+							{ assignedTo: userInfo.name },
+							{ assignedTo: userInfo.email },
+							{ salesResponsibility: userInfo.name },
+							{ technical: userInfo.name },
+						],
+					}
 				: {};
 
 		const enquiries: any[] = await Enquiry.find(userScopeWhere)
@@ -937,8 +943,8 @@ export const getAnalyticsDashboard = async (
 		const avgOpenAge =
 			activeDaysOpen.length > 0
 				? Math.round(
-					activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
-				)
+						activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
+					)
 				: 0;
 
 		const summary = {
@@ -1191,14 +1197,14 @@ export const createEnquiry = async (
 				enquiry,
 				enquiry.assignedTo,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 		if (enquiry.technical && enquiry.technical !== enquiry.assignedTo) {
 			createAssignmentNotification(
 				enquiry,
 				enquiry.technical,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 
 		const cleanData = {
@@ -1339,7 +1345,7 @@ export const updateEnquiry = async (
 				updated,
 				body.assignedTo,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 
 		return res.json({
@@ -1478,7 +1484,12 @@ export const approveReview = async (
 				.json({ success: false, message: "Invalid enquiry ID" });
 		}
 
-		const { statusAction, remarks, offerNo: bodyOfferNo, offerDate: bodyOfferDate } = req.body;
+		const {
+			statusAction,
+			remarks,
+			offerNo: bodyOfferNo,
+			offerDate: bodyOfferDate,
+		} = req.body;
 		const userInfo = await getAuthenticatedUserInfo(req);
 
 		const existing: any = await Enquiry.findById(id);
@@ -1494,12 +1505,15 @@ export const approveReview = async (
 			if (!canReviewRfq(userInfo || req.user)) {
 				return res.status(403).json({
 					success: false,
-					message: "Access Denied: You do not have permission to request changes on RFQs.",
+					message:
+						"Access Denied: You do not have permission to request changes on RFQs.",
 				});
 			}
 
 			const reviewerName = userInfo?.name || req.user?.email || "Reviewer";
-			const remarksNote = remarks ? ` [Changes Requested by ${reviewerName}: ${remarks}]` : "";
+			const remarksNote = remarks
+				? ` [Changes Requested by ${reviewerName}: ${remarks}]`
+				: "";
 
 			const updated: any = await Enquiry.findByIdAndUpdate(
 				id,
@@ -1535,7 +1549,8 @@ export const approveReview = async (
 
 			return res.json({
 				success: true,
-				message: "Changes requested successfully. Status reset to Open for revision.",
+				message:
+					"Changes requested successfully. Status reset to Open for revision.",
 				data: { ...updated.toObject(), id: updated._id.toString() },
 			});
 		}
@@ -1552,8 +1567,7 @@ export const approveReview = async (
 
 		const finalOfferNo =
 			bodyOfferNo || existing.offerNo || existing.clientRefNo || "";
-		const finalOfferDate =
-			bodyOfferDate || existing.offerDate || getTodayIso();
+		const finalOfferDate = bodyOfferDate || existing.offerDate || getTodayIso();
 		const approverName = userInfo?.name || req.user?.email || "Admin";
 
 		const updated: any = await Enquiry.findByIdAndUpdate(
@@ -1596,7 +1610,6 @@ export const approveReview = async (
 	}
 };
 
-
 export const uploadAttachment = async (
 	req: AuthenticatedRequest,
 	res: Response,
@@ -1627,12 +1640,12 @@ export const uploadAttachment = async (
 		const extracted: ExtractedOfferMetadata = isOfferDoc
 			? await extractOfferDetailsFromDoc(file.buffer, file.originalname)
 			: {
-				enquiryNo: "",
-				offerNo: "",
-				offerDate: "",
-				clientName: "",
-				projectName: "",
-			};
+					enquiryNo: "",
+					offerNo: "",
+					offerDate: "",
+					clientName: "",
+					projectName: "",
+				};
 
 		// 2. Intelligent RFQ Resolution by Enquiry No / Client Name
 		let targetEnquiryId = requestedId;
@@ -1772,7 +1785,7 @@ export const autoMapOfferDocApi = async (
 			file.mimetype,
 			file.buffer,
 			"offer",
-		).catch(() => { });
+		).catch(() => {});
 
 		return res.json({
 			success: true,
@@ -1873,7 +1886,16 @@ export const inlineUpdateField = async (
 		}
 
 		const { field, value } = req.body;
-		const allowed = ["status", "assignedTo", "type", "offerNo", "offerDate", "remarks", "followupRemarks", "pendingRemarks"];
+		const allowed = [
+			"status",
+			"assignedTo",
+			"type",
+			"offerNo",
+			"offerDate",
+			"remarks",
+			"followupRemarks",
+			"pendingRemarks",
+		];
 		if (!allowed.includes(field)) {
 			return res.status(400).json({
 				success: false,
@@ -1905,7 +1927,13 @@ export const inlineUpdateField = async (
 			updateData.offerDate = parseIsoDate(value);
 		}
 
-		if ((field === "remarks" || field === "followupRemarks" || field === "pendingRemarks") && value && value.trim()) {
+		if (
+			(field === "remarks" ||
+				field === "followupRemarks" ||
+				field === "pendingRemarks") &&
+			value &&
+			value.trim()
+		) {
 			let authorName = req.user?.email || "User";
 			let authorEmail = req.user?.email || "";
 			if (req.user?.userId) {
@@ -1915,7 +1943,9 @@ export const inlineUpdateField = async (
 					authorEmail = u.email;
 				}
 			}
-			const currentFollowups = Array.isArray(existing.followups) ? existing.followups : [];
+			const currentFollowups = Array.isArray(existing.followups)
+				? existing.followups
+				: [];
 			currentFollowups.push({
 				type: "Remark",
 				note: value.trim(),
@@ -1969,10 +1999,7 @@ export const inlineUpdateField = async (
 	}
 };
 
-export const addFollowup = async (
-	req: AuthenticatedRequest,
-	res: Response,
-) => {
+export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 	try {
 		const id = req.params.id;
 		if (!id) {
@@ -2028,7 +2055,8 @@ export const addFollowup = async (
 		existing.remarks = note.trim();
 		existing.followupRemarks = note.trim();
 		if (nextActionDate) existing.nextActionDate = nextActionDate;
-		if (lastCallDate || type === "Call") existing.lastCallDate = lastCallDate || getTodayIso();
+		if (lastCallDate || type === "Call")
+			existing.lastCallDate = lastCallDate || getTodayIso();
 
 		await existing.save();
 
@@ -2342,7 +2370,7 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 					file.mimetype || "application/octet-stream",
 					file.buffer,
 					kind,
-				).catch(() => { });
+				).catch(() => {});
 				attachedFiles.push({
 					id: att._id.toString(),
 					filename: att.filename,
@@ -2366,6 +2394,86 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 	}
 };
 
+const generateOfferGeneratorSsoToken = (
+	userEmail: string,
+	roleName: string,
+): string => {
+	const secret = (
+		process.env.AUTH_SECRET ||
+		process.env.AUTOMATION_SECRET ||
+		"dev-insecure-secret-change-me"
+	).trim();
+	const exp = Math.floor(Date.now() / 1000) + 12 * 60 * 60; // 12 hours
+	const userRole = ["ADMIN", "CO", "GM"].includes(
+		(roleName || "").toUpperCase(),
+	)
+		? "admin"
+		: "user";
+	const payload = { u: userEmail || "user", r: userRole, exp };
+	const raw = Buffer.from(JSON.stringify(payload)).toString("base64url");
+	const sig = crypto.createHmac("sha256", secret).update(raw).digest("hex");
+	return `${raw}.${sig}`;
+};
+
+const resolveUserContactDetails = async (
+	rawName: string,
+): Promise<{ email: string; mobile: string }> => {
+	if (!rawName || !rawName.trim()) return { email: "", mobile: "" };
+	const firstName = rawName.split("/")[0].trim();
+	if (firstName.includes("@")) return { email: firstName, mobile: "" };
+
+	const escaped = firstName.replace(/[-[\]{}()*+?.,\\^$|#\s]/g, "\\$&");
+
+	// 1. Exact case-insensitive match in User collection
+	let user: any = await User.findOne({
+		name: { $regex: new RegExp(`^${escaped}$`, "i") },
+		status: "ACTIVE",
+	}).lean();
+
+	// 2. Word boundary match in User collection (e.g. "Shikha" -> "Shikha Sharma")
+	if (!user) {
+		user = await User.findOne({
+			name: { $regex: new RegExp(`\\b${escaped}\\b`, "i") },
+			status: "ACTIVE",
+		}).lean();
+	}
+
+	// 3. Email prefix match in User collection (e.g. "kk" -> "kk@encon.co.in")
+	if (!user) {
+		user = await User.findOne({
+			email: { $regex: new RegExp(`^${escaped}@`, "i") },
+			status: "ACTIVE",
+		}).lean();
+	}
+
+	if (user && user.email) {
+		return { email: user.email, mobile: user.mobile || "" };
+	}
+
+	// 4. Exact / word / prefix match in AssigneeEmail collection
+	let legacy: any = await AssigneeEmail.findOne({
+		name: { $regex: new RegExp(`^${escaped}$`, "i") },
+	}).lean();
+
+	if (!legacy) {
+		legacy = await AssigneeEmail.findOne({
+			name: { $regex: new RegExp(`\\b${escaped}\\b`, "i") },
+		}).lean();
+	}
+
+	if (!legacy) {
+		legacy = await AssigneeEmail.findOne({
+			email: { $regex: new RegExp(`^${escaped}@`, "i") },
+		}).lean();
+	}
+
+	if (legacy && legacy.email) {
+		return { email: legacy.email, mobile: "" };
+	}
+
+	return { email: "", mobile: "" };
+};
+
 export const getAutomationUrlApi = async (
 	req: AuthenticatedRequest,
 	res: Response,
@@ -2385,33 +2493,138 @@ export const getAutomationUrlApi = async (
 				.json({ success: false, message: "Enquiry not found" });
 		}
 
+		const isLocal =
+			process.env.NODE_ENV !== "production" ||
+			(req.headers.host || "").includes("localhost") ||
+			(req.headers.host || "").includes("127.0.0.1");
+
+		const defaultUrl = isLocal
+			? "http://127.0.0.1:8000"
+			: "https://automation.encon.co.in";
+
 		const baseUrl = (
 			process.env.AUTOMATION_URL ||
 			process.env.NEXT_PUBLIC_AUTOMATION_URL ||
-			"https://automation.encon.co.in"
+			defaultUrl
 		).trim();
+
+		const userEmail = req.user?.email || "user@encon.co.in";
+		const userRole = (req.user?.role || "").toUpperCase();
+		const ssoToken = generateOfferGeneratorSsoToken(userEmail, userRole);
+
+		// Always send the user to the automation dashboard root.
+		// The offer generator fetches client details itself via /api/enquiry/{enquiry_id}
+		// using the enquiry_id — no inline client data is embedded in the URL.
+		const baseClean = baseUrl.replace(/\/+$/, "");
+
 		const params = new URLSearchParams({
-			rfq_id: enquiry.rfqId || "",
+			sso_token: ssoToken,
 			enquiry_id: enquiry._id.toString(),
-			company: enquiry.companyName || "",
-			contact: enquiry.contactPerson || "",
-			email: enquiry.email || "",
-			mobile: enquiry.mobile || "",
-			item: enquiry.itemDescription || "",
-			type: enquiry.type || "",
-			salesResponsibility: enquiry.salesResponsibility || "",
-			technical: enquiry.technical || "",
-			assignedTo: enquiry.assignedTo || "",
+			rfq_id: enquiry.rfqId || "",
 		});
 
-		const sep = baseUrl.includes("?") ? "&" : "?";
-		const targetUrl = `${baseUrl}${sep}${params.toString()}`;
+		const targetUrl = `${baseClean}/?${params.toString()}`;
 
 		return res.json({
 			success: true,
 			targetUrl,
 			params: Object.fromEntries(params.entries()),
 		});
+	} catch (error: any) {
+		return res.status(500).json({ success: false, message: error.message });
+	}
+};
+
+/**
+ * Service-to-service endpoint used by the Offer Generator to pull client
+ * and resolved-contact details for a given enquiry.
+ *
+ * Auth: AUTOMATION_CALLBACK_TOKEN bearer token (same token the offer generator
+ * uses for the callback/webhook endpoints). No user JWT required.
+ *
+ * Returns the same payload structure that rfq_prefill.js expects.
+ */
+export const getEnquiryServiceApi = async (
+	req: AuthenticatedRequest,
+	res: Response,
+) => {
+	try {
+		const id = req.params.id;
+		if (!id || !mongoose.Types.ObjectId.isValid(id)) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		const enquiry: any = await Enquiry.findById(id).lean();
+		if (!enquiry) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		// Resolve technical and marketing staff contact details
+		const [techInfo, salesInfo] = await Promise.all([
+			resolveUserContactDetails(enquiry.technical || ""),
+			resolveUserContactDetails(enquiry.salesResponsibility || ""),
+		]);
+
+		return res.json({
+			success: true,
+			data: {
+				enquiry_id: enquiry._id.toString(),
+				rfq_id: enquiry.rfqId || "",
+				company: enquiry.companyName || "",
+				contact: enquiry.contactPerson || "",
+				email: enquiry.email || "",
+				mobile: enquiry.mobile || "",
+				item: enquiry.itemDescription || "",
+				type: enquiry.type || "",
+				marketing: enquiry.salesResponsibility || "",
+				marketing_email: salesInfo.email || "",
+				marketing_phone: salesInfo.mobile || "",
+				technical: enquiry.technical || "",
+				technical_email: techInfo.email || "",
+				technical_phone: techInfo.mobile || "",
+				assignedTo: enquiry.assignedTo || "",
+				status: enquiry.status || "",
+			},
+		});
+	} catch (error: any) {
+		return res.status(500).json({ success: false, message: error.message });
+	}
+};
+
+/**
+ * Service-to-service endpoint: returns a slim list of all enquiries for use
+ * in the Offer Generator's RFQ import dropdown.
+ *
+ * Auth: AUTOMATION_CALLBACK_TOKEN (same as getEnquiryServiceApi).
+ */
+export const getEnquiryListServiceApi = async (
+	req: AuthenticatedRequest,
+	res: Response,
+) => {
+	try {
+		const enquiries: any[] = await Enquiry.find({})
+			.select("rfqId companyName contactPerson email mobile salesResponsibility status itemDescription assignedTo createdAt")
+			.sort({ _id: -1 })
+			.limit(500)
+			.lean();
+
+		const data = enquiries.map((e) => ({
+			id: e._id.toString(),
+			enquiry_no: e.rfqId || "",
+			company_name: e.companyName || "",
+			contact_name: e.contactPerson || "",
+			email: e.email || "",
+			phone: e.mobile || "",
+			owner: e.salesResponsibility || e.assignedTo || "",
+			status: e.status || "",
+			product: e.itemDescription || "",
+		}));
+
+		return res.json({ success: true, enquiries: data });
 	} catch (error: any) {
 		return res.status(500).json({ success: false, message: error.message });
 	}
@@ -2452,15 +2665,21 @@ export const getDirectory = async (
 		]);
 
 		const nameSet = new Set<string>();
-		systemUsers.forEach((u) => { if (u.name) nameSet.add(u.name); });
-		legacyAssignees.forEach((a) => { if (a.name) nameSet.add(a.name); });
+		systemUsers.forEach((u) => {
+			if (u.name) nameSet.add(u.name);
+		});
+		legacyAssignees.forEach((a) => {
+			if (a.name) nameSet.add(a.name);
+		});
 
 		[...assignedToNames, ...salesNames, ...techNames].forEach((val) => {
 			if (val) {
-				String(val).split("/").forEach((t: string) => {
-					const trimmed = t.trim();
-					if (trimmed) nameSet.add(trimmed);
-				});
+				String(val)
+					.split("/")
+					.forEach((t: string) => {
+						const trimmed = t.trim();
+						if (trimmed) nameSet.add(trimmed);
+					});
 			}
 		});
 
@@ -2620,7 +2839,7 @@ export const syncInboxApi = async (
 					userEmail: triggeredBy,
 					action: "INBOX_SYNC",
 					details: stats,
-				}).catch(() => { });
+				}).catch(() => {});
 			} catch (bgErr: any) {
 				console.error(
 					"❌ [syncInboxApi Background Error]:",
