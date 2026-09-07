@@ -27,6 +27,7 @@ import {
   openDriveFolderApi,
   syncDriveFolderApi,
   autoMapOfferDocApi,
+  addFollowup,
 } from '../controllers/rfqController';
 import { authenticateToken } from '../middleware/authMiddleware';
 
@@ -83,6 +84,7 @@ router.get('/:id/drive', openDriveFolderApi);
 router.post('/:id/sync-drive', syncDriveFolderApi);
 router.put('/:id', updateEnquiry);
 router.patch('/:id/inline', inlineUpdateField);
+router.post('/:id/followup', addFollowup);
 router.post('/:id/send-review', sendForReview);
 router.post('/:id/verify-review', verifyReview);
 router.post('/:id/approve-review', approveReview);

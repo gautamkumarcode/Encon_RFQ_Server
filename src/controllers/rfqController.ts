@@ -1988,7 +1988,13 @@ export const addFollowup = async (
 				.json({ success: false, message: "Follow-up note text is required" });
 		}
 
-		const existing: any = await Enquiry.findById(id);
+		let existing: any = null;
+		if (mongoose.Types.ObjectId.isValid(id)) {
+			existing = await Enquiry.findById(id);
+		}
+		if (!existing) {
+			existing = await Enquiry.findOne({ rfqId: id });
+		}
 		if (!existing) {
 			return res
 				.status(404)
