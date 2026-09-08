@@ -36,7 +36,20 @@ export async function seedDatabase() {
   console.log('✅ Created default Roles');
 
   // 2. Permissions
-  const modules = ['USER_MGMT', 'ROLE_MGMT', 'APP_MGMT', 'DASHBOARD', 'ANALYTICS', 'ACTIVITY_LOGS', 'NOTIFICATIONS', 'RFQ_MGMT'];
+  const modules = [
+    'USER_MGMT',
+    'ROLE_MGMT',
+    'APP_MGMT',
+    'DASHBOARD',
+    'ANALYTICS',
+    'ACTIVITY_LOGS',
+    'NOTIFICATIONS',
+    'RFQ_MGMT',
+    'RFQ_COSTING',
+    'RFQ_REVIEW',
+    'RFQ_APPROVAL',
+    'RFQ_OFFERS',
+  ];
   const actions = ['READ', 'WRITE', 'DELETE', 'MANAGE'];
 
   for (const mod of modules) {
@@ -51,7 +64,7 @@ export async function seedDatabase() {
   console.log('✅ Created Permissions');
 
   const allPermissions = await Permission.find();
-  const fullPermissionRoleNames = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'];
+  const fullPermissionRoleNames = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES'];
 
   for (const roleName of fullPermissionRoleNames) {
     if (rolesMap[roleName]) {
@@ -86,27 +99,15 @@ export async function seedDatabase() {
     { name: 'Puneet Mahender', email: 'pm@encon.co.in', roleName: 'ADMIN' },
   ];
 
-  // Remove non-admin users
-  const adminRoleId = rolesMap['ADMIN'];
-  const nonAdminUsers = await User.find({ roleId: { $ne: adminRoleId } });
-  const nonAdminUserIds = nonAdminUsers.map((u) => u._id);
-
-  if (nonAdminUserIds.length > 0) {
-    await UserApplication.deleteMany({ userId: { $in: nonAdminUserIds } });
-    await User.deleteMany({ _id: { $in: nonAdminUserIds } });
-    console.log(`🧹 Removed ${nonAdminUserIds.length} non-admin users.`);
-  }
-
-  await AssigneeEmail.deleteMany({});
-
   for (const u of targetUsers) {
+    const roleId = rolesMap[u.roleName] || rolesMap['ADMIN'];
     const user: any = await User.findOneAndUpdate(
       { email: u.email.toLowerCase() },
       {
         name: u.name,
         email: u.email.toLowerCase(),
         passwordHash,
-        roleId: rolesMap[u.roleName],
+        roleId,
         status: 'ACTIVE',
       },
       { upsert: true, new: true }
@@ -125,7 +126,7 @@ export async function seedDatabase() {
     );
   }
 
-  console.log('✅ Seeded Admin User ONLY (pm@encon.co.in) successfully into MongoDB!');
+  console.log('✅ Seeded system users & directory successfully into MongoDB!');
 }
 
 if (require.main === module) {

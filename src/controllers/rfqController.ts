@@ -392,6 +392,10 @@ export function canReviewRfq(user?: any): boolean {
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
 		if (
+			perms.includes("RFQ_REVIEW:READ") ||
+			perms.includes("RFQ_REVIEW:WRITE") ||
+			perms.includes("RFQ_REVIEW:MANAGE") ||
+			perms.includes("RFQ_REVIEW:APPROVE") ||
 			perms.includes("RFQ_MGMT:WRITE") ||
 			perms.includes("RFQ_MGMT:MANAGE") ||
 			perms.includes("RFQ:REVIEW") ||
@@ -424,12 +428,20 @@ export function canFinalApproveRfq(user?: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
-	if (roleName === "ADMIN") return true;
-	if (
-		Array.isArray(user.permissions) &&
-		user.permissions.includes("RFQ:FINAL_APPROVE")
-	)
-		return true;
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+
+	if (Array.isArray(user.permissions)) {
+		const perms = user.permissions;
+		if (
+			perms.includes("RFQ_APPROVAL:WRITE") ||
+			perms.includes("RFQ_APPROVAL:MANAGE") ||
+			perms.includes("RFQ_APPROVAL:APPROVE") ||
+			perms.includes("RFQ_MGMT:MANAGE") ||
+			perms.includes("RFQ:FINAL_APPROVE")
+		) {
+			return true;
+		}
+	}
 	return false;
 }
 
@@ -447,6 +459,8 @@ export function canEditRfq(user?: any): boolean {
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
 		if (
+			perms.includes("RFQ_COSTING:WRITE") ||
+			perms.includes("RFQ_COSTING:MANAGE") ||
 			perms.includes("RFQ_MGMT:WRITE") ||
 			perms.includes("RFQ_MGMT:MANAGE") ||
 			perms.includes("RFQ:WRITE") ||

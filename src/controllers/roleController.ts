@@ -1,4 +1,5 @@
 import { Response } from 'express';
+import mongoose from 'mongoose';
 import { Role } from '../models/Role';
 import { Permission, RolePermission } from '../models/Permission';
 import { User } from '../models/User';
@@ -13,7 +14,14 @@ export const getRoles = async (req: AuthenticatedRequest, res: Response) => {
       roles.map(async (r: any) => {
         const userCount = await User.countDocuments({ roleId: r._id });
         const rolePermissions = await RolePermission.find({ roleId: r._id }).populate('permissionId');
-        const permissions = rolePermissions.map((rp: any) => rp.permissionId).filter(Boolean);
+        const permissions = rolePermissions
+          .filter((rp: any) => rp.permissionId)
+          .map((rp: any) => ({
+            id: rp.permissionId._id ? rp.permissionId._id.toString() : String(rp.permissionId),
+            module: rp.permissionId.module || '',
+            action: rp.permissionId.action || '',
+            description: rp.permissionId.description || '',
+          }));
 
         return {
           id: r._id.toString(),
@@ -57,27 +65,43 @@ export const updateRolePermissions = async (req: AuthenticatedRequest, res: Resp
       return res.status(400).json({ success: false, message: 'permissionIds must be an array of IDs' });
     }
 
+    if (!mongoose.Types.ObjectId.isValid(id)) {
+      return res.status(400).json({ success: false, message: 'Invalid role ID' });
+    }
+
     const role: any = await Role.findById(id);
     if (!role) return res.status(404).json({ success: false, message: 'Role not found' });
+
+    const validIds = Array.from(
+      new Set(
+        permissionIds
+          .map((p: any) => {
+            if (!p) return '';
+            if (typeof p === 'object') return (p.id || p._id || p.permissionId || '').toString();
+            return String(p || '');
+          })
+          .map((p: string) => p.trim())
+          .filter((pId: string) => pId.length > 0 && mongoose.Types.ObjectId.isValid(pId))
+      )
+    );
 
     // Delete existing permissions for role
     await RolePermission.deleteMany({ roleId: id });
 
-    // Re-create assigned permissions
-    if (permissionIds.length > 0) {
-      await RolePermission.insertMany(
-        permissionIds.map((pId: string) => ({
-          roleId: id,
-          permissionId: pId,
-        }))
-      );
+    // Re-create assigned permissions safely
+    if (validIds.length > 0) {
+      const docsToInsert = validIds.map((pId: string) => ({
+        roleId: new mongoose.Types.ObjectId(id),
+        permissionId: new mongoose.Types.ObjectId(pId),
+      }));
+      await RolePermission.insertMany(docsToInsert);
     }
 
     await logActivity({
       userId: req.user?.userId,
       userEmail: req.user?.email || 'SYSTEM',
       action: 'ROLE_PERMISSIONS_UPDATED',
-      details: { roleName: role.name, count: permissionIds.length },
+      details: { roleName: role.name, count: validIds.length },
     });
 
     return res.json({ success: true, message: `Permissions updated for role ${role.name}` });
