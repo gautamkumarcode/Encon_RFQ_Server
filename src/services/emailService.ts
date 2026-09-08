@@ -220,3 +220,384 @@ export async function sendWelcomeUserEmail(options: SendWelcomeEmailOptions): Pr
     return false;
   }
 }
+
+export interface SendCostingApprovedEmailOptions {
+  toEmail: string;
+  salesPersonName: string;
+  approverEmail: string;
+  enquiry: {
+    id?: number | string;
+    rfqId: string;
+    companyName: string;
+    offerNo?: string;
+    offerDate?: string;
+    itemDescription?: string;
+    driveFolderUrl?: string;
+  };
+}
+
+/**
+ * 1. Send notification to Sales Person when RFQ Costing & Offer is Approved by Management.
+ */
+export async function sendCostingApprovedEmail(options: SendCostingApprovedEmailOptions): Promise<boolean> {
+  const { toEmail, salesPersonName, approverEmail, enquiry } = options;
+
+  if (!toEmail || !toEmail.includes('@')) {
+    console.warn(`⚠️ Cannot send approval email: Invalid recipient address "${toEmail}"`);
+    return false;
+  }
+
+  const config = getSmtpConfig();
+  if (!config.pass) {
+    console.warn(`⚠️ Cannot send approval email to ${toEmail}: SMTP_PASSWORD or IMAP_PASSWORD missing.`);
+    return false;
+  }
+
+  const subject = `[ENCON RFQ APPROVED] Offer ${enquiry.offerNo || enquiry.rfqId} Approved - Ready for Client (${enquiry.companyName})`;
+  const portalUrl = (process.env.FRONTEND_URL || 'https://dashboard.encon.in').split(',')[0].trim();
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
+      <div style="border-bottom: 2px solid #10b981; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #34d399; margin: 0; font-size: 20px;">🎉 RFQ Costing & Offer Approved!</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Management Approval Notification</p>
+      </div>
+
+      <p style="font-size: 14px; color: #e2e8f0;">Hello <strong>${salesPersonName}</strong>,</p>
+
+      <p style="font-size: 14px; color: #cbd5e1;">
+        Management (<strong>${approverEmail}</strong>) has <strong style="color: #34d399;">APPROVED</strong> the technical costing & offer for <strong>${enquiry.companyName}</strong>. You can now dispatch the official proposal offer to the client.
+      </p>
+
+      <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1;">
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>RFQ ID:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8; font-weight: bold;">${enquiry.rfqId || `#${enquiry.id}`}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Offer Number:</strong></td>
+            <td style="padding: 6px 0; color: #fbbf24; font-weight: bold; font-family: monospace;">${enquiry.offerNo || 'Generated Offer'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Customer:</strong></td>
+            <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${enquiry.companyName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; vertical-align: top;"><strong>Requirement:</strong></td>
+            <td style="padding: 6px 0; color: #f1f5f9; line-height: 1.4;">${enquiry.itemDescription || 'N/A'}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${portalUrl}/rfq/${enquiry.id}" target="_blank" style="background-color: #10b981; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(16, 185, 129, 0.3);">
+          🚀 View Approved RFQ & Send Offer to Client ↗
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
+        Automated notification from Encon Command Center.
+      </div>
+    </div>
+  `;
+
+  try {
+    const transporter = createTransporter(config);
+    await transporter.sendMail({
+      from: `"ENCON Command Center" <${config.user}>`,
+      to: toEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✉️ Approval notification email sent to Sales (${toEmail})`);
+    return true;
+  } catch (err: any) {
+    console.error(`❌ Error sending approval email to ${toEmail}:`, err.message);
+    return false;
+  }
+}
+
+export interface SendRfqReviewRequiredEmailOptions {
+  toEmail: string;
+  reviewerName?: string;
+  submitterEmail?: string;
+  enquiry: {
+    id: number | string;
+    rfqId: string;
+    companyName: string;
+    contactPerson?: string;
+    itemDescription?: string;
+    technical?: string;
+    salesResponsibility?: string;
+    driveFolderUrl?: string;
+  };
+}
+
+/**
+ * Send an email notification to Reviewers / Management when an RFQ is submitted for Review.
+ */
+export async function sendRfqReviewRequiredEmail(options: SendRfqReviewRequiredEmailOptions): Promise<boolean> {
+  const { toEmail, reviewerName, submitterEmail, enquiry } = options;
+
+  if (!toEmail || !toEmail.includes('@')) return false;
+
+  const config = getSmtpConfig();
+  if (!config.pass) return false;
+
+  const subject = `[ENCON RFQ FOR REVIEW] Review Required: ${enquiry.rfqId || `RFQ #${enquiry.id}`} - ${enquiry.companyName}`;
+  const portalUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+  const reviewLink = `${portalUrl}/review/${enquiry.id}`;
+  const rfqLink = `${portalUrl}/rfq/${enquiry.id}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
+      <div style="border-bottom: 2px solid #f59e0b; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #fbbf24; margin: 0; font-size: 20px;">📋 RFQ Costing Ready for Review</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Management Review & Verification Action Required</p>
+      </div>
+
+      <p style="font-size: 14px; color: #e2e8f0;">Hello <strong>${reviewerName || 'Management Reviewer'}</strong>,</p>
+
+      <p style="font-size: 14px; color: #cbd5e1;">
+        The technical costing & offer for <strong>${enquiry.companyName}</strong> (${enquiry.rfqId}) has been submitted for review by <strong>${submitterEmail || 'Engineering Team'}</strong>.
+      </p>
+
+      <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1;">
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>RFQ ID:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8; font-weight: bold;">${enquiry.rfqId || `#${enquiry.id}`}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Customer:</strong></td>
+            <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${enquiry.companyName || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Technical Assignee:</strong></td>
+            <td style="padding: 6px 0; color: #cbd5e1;">${enquiry.technical || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Sales Lead:</strong></td>
+            <td style="padding: 6px 0; color: #cbd5e1;">${enquiry.salesResponsibility || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; vertical-align: top;"><strong>Requirement:</strong></td>
+            <td style="padding: 6px 0; color: #f1f5f9; line-height: 1.4;">${enquiry.itemDescription || 'N/A'}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${reviewLink}" target="_blank" style="background-color: #f59e0b; color: #000000; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block; box-shadow: 0 4px 12px rgba(245, 158, 11, 0.3);">
+          🔍 Open Review Portal & Approve Offer ↗
+        </a>
+      </div>
+
+      <div style="margin: 16px 0; text-align: center;">
+        <a href="${rfqLink}" target="_blank" style="color: #38bdf8; text-decoration: underline; font-size: 13px;">
+          View Full RFQ Detail Page
+        </a>
+      </div>
+
+      ${enquiry.driveFolderUrl
+        ? `<div style="margin: 16px 0; text-align: center;">
+            <a href="${enquiry.driveFolderUrl}" target="_blank" style="color: #10b981; text-decoration: underline; font-size: 13px;">
+              📁 Open Google Drive Attachments & Costing Folder
+            </a>
+          </div>`
+        : ''
+      }
+
+      <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
+        Automated review request from Encon Command Center.
+      </div>
+    </div>
+  `;
+
+  try {
+    const transporter = createTransporter(config);
+    await transporter.sendMail({
+      from: `"ENCON Command Center" <${config.user}>`,
+      to: toEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✉️ RFQ Review request email sent to Reviewer (${toEmail})`);
+    return true;
+  } catch (err: any) {
+    console.error(`❌ Error sending RFQ Review request email to ${toEmail}:`, err.message);
+    return false;
+  }
+}
+
+export interface SendTatExpiredReminderEmailOptions {
+  toEmail: string;
+  assigneeName: string;
+  enquiry: {
+    id?: number | string;
+    rfqId: string;
+    companyName: string;
+    itemDescription?: string;
+    dateReceived?: string;
+    tat?: string;
+    daysOpen?: number;
+    status?: string;
+  };
+}
+
+/**
+ * 2. Send TAT Expiration / Overdue Reminder Email to assigned team.
+ */
+export async function sendTatExpiredReminderEmail(options: SendTatExpiredReminderEmailOptions): Promise<boolean> {
+  const { toEmail, assigneeName, enquiry } = options;
+
+  if (!toEmail || !toEmail.includes('@')) return false;
+
+  const config = getSmtpConfig();
+  if (!config.pass) return false;
+
+  const subject = `[URGENT TAT OVERDUE] RFQ ${enquiry.rfqId || `#${enquiry.id}`} - Action Required (${enquiry.companyName})`;
+  const portalUrl = (process.env.FRONTEND_URL || 'https://dashboard.encon.in').split(',')[0].trim();
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
+      <div style="border-bottom: 2px solid #ef4444; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #f87171; margin: 0; font-size: 20px;">⚠️ TAT Expiration / Overdue Alert</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Turnaround Time Deadline Notification</p>
+      </div>
+
+      <p style="font-size: 14px; color: #e2e8f0;">Hello <strong>${assigneeName}</strong>,</p>
+
+      <p style="font-size: 14px; color: #cbd5e1;">
+        The target Turnaround Time (TAT) of <strong style="color: #f87171;">${enquiry.tat || '30'} Days</strong> has passed for RFQ <strong>${enquiry.rfqId || `#${enquiry.id}`}</strong>. Please complete the technical costing and proposal offer immediately.
+      </p>
+
+      <div style="background-color: #1e293b; border: 1px solid #7f1d1d; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1;">
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>RFQ ID:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8; font-weight: bold;">${enquiry.rfqId || `#${enquiry.id}`}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Customer:</strong></td>
+            <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${enquiry.companyName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Current Status:</strong></td>
+            <td style="padding: 6px 0; color: #fbbf24; font-weight: bold;">${enquiry.status || 'Pending'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Days Open:</strong></td>
+            <td style="padding: 6px 0; color: #f87171; font-weight: bold;">${enquiry.daysOpen || 'Overdue'} Days</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${portalUrl}/rfq/${enquiry.id}" target="_blank" style="background-color: #ef4444; color: #ffffff; padding: 14px 28px; border-radius: 10px; text-decoration: none; font-weight: bold; font-size: 14px; display: inline-block;">
+          ⚡ Open RFQ & Complete Costing Now ↗
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
+        Automated TAT alert from Encon Command Center.
+      </div>
+    </div>
+  `;
+
+  try {
+    const transporter = createTransporter(config);
+    await transporter.sendMail({
+      from: `"ENCON Command Center" <${config.user}>`,
+      to: toEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✉️ TAT reminder email sent to ${toEmail}`);
+    return true;
+  } catch (err: any) {
+    console.error(`❌ Error sending TAT reminder email to ${toEmail}:`, err.message);
+    return false;
+  }
+}
+
+export interface SendClientPostOfferFollowupEmailOptions {
+  toClientEmail: string;
+  clientName: string;
+  salesEmail?: string;
+  salesName?: string;
+  enquiry: {
+    id?: number | string;
+    rfqId: string;
+    companyName: string;
+    offerNo?: string;
+    itemDescription?: string;
+  };
+}
+
+/**
+ * 3. Send Post-Offer Sent Client Follow-Up Email & Inquiry.
+ */
+export async function sendClientPostOfferFollowupEmail(options: SendClientPostOfferFollowupEmailOptions): Promise<boolean> {
+  const { toClientEmail, clientName, salesEmail, salesName, enquiry } = options;
+
+  if (!toClientEmail || !toClientEmail.includes('@')) return false;
+
+  const config = getSmtpConfig();
+  if (!config.pass) return false;
+
+  const subject = `ENCON Proposal Follow-up: Offer ${enquiry.offerNo || enquiry.rfqId} - ${enquiry.companyName}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; color: #1e293b; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0;">
+      <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #0284c7; margin: 0; font-size: 18px;">Encon Thermal Engineers Pvt. Ltd.</h2>
+        <p style="color: #64748b; font-size: 12px; margin: 4px 0 0 0;">Commercial & Technical Proposal Follow-up</p>
+      </div>
+
+      <p style="font-size: 14px; color: #334155;">Dear <strong>${clientName || 'Valued Customer'}</strong>,</p>
+
+      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+        We recently submitted our technical and commercial offer <strong>${enquiry.offerNo || enquiry.rfqId}</strong> for <strong>${enquiry.itemDescription || 'your requirement'}</strong>.
+      </p>
+
+      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+        We wanted to follow up to ensure that the proposal reached you safely and to check if you have any technical queries or require any clarification regarding our offer details.
+      </p>
+
+      <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
+        <h4 style="color: #0284c7; margin: 0 0 10px 0; font-size: 14px;">📄 Proposal Summary</h4>
+        <p style="font-size: 13px; color: #475569; margin: 4px 0;"><strong>Offer Reference:</strong> ${enquiry.offerNo || enquiry.rfqId}</p>
+        <p style="font-size: 13px; color: #475569; margin: 4px 0;"><strong>Requirement:</strong> ${enquiry.itemDescription || 'Equipment Proposal'}</p>
+      </div>
+
+      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
+        Please let us know your convenient time for a quick discussion or feel free to reply directly to this email with your feedback.
+      </p>
+
+      <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b;">
+        <p style="margin: 0 0 4px 0;">Best regards,</p>
+        <p style="margin: 0; font-weight: bold; color: #1e293b;">${salesName || 'Sales Team'}</p>
+        <p style="margin: 2px 0; color: #0284c7;">Encon Thermal Engineers Pvt. Ltd.</p>
+        <p style="margin: 2px 0;">Web: <a href="https://www.encon.co.in" target="_blank" style="color: #0284c7;">www.encon.co.in</a></p>
+      </div>
+    </div>
+  `;
+
+  try {
+    const transporter = createTransporter(config);
+    await transporter.sendMail({
+      from: `"${salesName || 'ENCON Sales Team'}" <${config.user}>`,
+      to: toClientEmail,
+      cc: salesEmail && salesEmail.includes('@') ? salesEmail : undefined,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✉️ Post-offer follow-up email sent to Client (${toClientEmail})`);
+    return true;
+  } catch (err: any) {
+    console.error(`❌ Error sending client follow-up email to ${toClientEmail}:`, err.message);
+    return false;
+  }
+}

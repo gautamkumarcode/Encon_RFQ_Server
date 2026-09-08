@@ -24,6 +24,7 @@ import {
 	openDriveFolderApi,
 	recordOfferApi,
 	saveDirectory,
+	sendClientFollowupEmailApi,
 	sendForReview,
 	syncDriveFolderApi,
 	syncInboxApi,
@@ -106,6 +107,7 @@ router.post("/:id/sync-drive", syncDriveFolderApi);
 router.put("/:id", updateEnquiry);
 router.patch("/:id/inline", inlineUpdateField);
 router.post("/:id/followup", addFollowup);
+router.post("/:id/client-followup", sendClientFollowupEmailApi);
 router.post("/:id/send-review", sendForReview);
 router.post("/:id/verify-review", verifyReview);
 router.post("/:id/approve-review", approveReview);

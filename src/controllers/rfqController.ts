@@ -11,7 +11,7 @@ import { Enquiry } from "../models/Enquiry";
 import { Notification } from "../models/Notification";
 import { User } from "../models/User";
 import { RolePermission } from "../models/Permission";
-import { sendAssignmentEmail } from "../services/emailService";
+import { sendAssignmentEmail, sendCostingApprovedEmail, sendClientPostOfferFollowupEmail, sendRfqReviewRequiredEmail } from "../services/emailService";
 import {
 	ensureEnquiryDriveFolder,
 	mirrorAttachmentToDrive,
@@ -615,12 +615,13 @@ function isClosed(status?: string): boolean {
 function calculateDaysOpen(
 	receivedOn?: string,
 	status?: string,
+	assignedDate?: string,
 ): number | null {
-	if (isClosed(status) || !receivedOn) return null;
-	const parsed = parseIsoDate(receivedOn);
-	if (!parsed) return null;
+	if (isClosed(status)) return null;
+	const baseDateStr = parseIsoDate(assignedDate) || parseIsoDate(receivedOn);
+	if (!baseDateStr) return null;
 
-	const start = new Date(parsed).getTime();
+	const start = new Date(baseDateStr).getTime();
 	const now = new Date(getTodayIso()).getTime();
 	const diffDays = Math.floor((now - start) / (1000 * 60 * 60 * 24));
 	return Math.max(diffDays, 0);
@@ -771,6 +772,7 @@ export const getEnquiries = async (
 			const daysOpen = calculateDaysOpen(
 				e.receivedOn || e.dateReceived,
 				e.status,
+				e.assignedDate,
 			);
 			const ageClass = calculateAgeClass(daysOpen);
 			const tentativeOfferDate = calculateTentativeOfferDate(
@@ -784,7 +786,7 @@ export const getEnquiries = async (
 				e.tat,
 				e.status,
 			);
-			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= 30;
+			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
 			const cleanOfferNo = sanitizeOfferNo(e.offerNo, e.rfqId);
 
 			return {
@@ -863,6 +865,7 @@ export const getEnquiries = async (
 			const daysOpen = calculateDaysOpen(
 				e.receivedOn || e.dateReceived,
 				e.status,
+				e.assignedDate,
 			);
 			const followupDue = isFollowupDue(
 				e.assignedDate,
@@ -1022,8 +1025,9 @@ export const getAnalyticsDashboard = async (
 			const daysOpen = calculateDaysOpen(
 				e.receivedOn || e.dateReceived,
 				e.status,
+				e.assignedDate,
 			);
-			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= 30;
+			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
 			const followupDue = isFollowupDue(
 				e.assignedDate,
 				e.dateReceived,
@@ -1176,6 +1180,7 @@ export const getEnquiryById = async (
 		const daysOpen = calculateDaysOpen(
 			enquiry.receivedOn || enquiry.dateReceived,
 			enquiry.status,
+			enquiry.assignedDate,
 		);
 		const cleanAttachments = (attachments || []).map((att: any) => ({
 			id: att._id.toString(),
@@ -1425,7 +1430,11 @@ export const updateEnquiry = async (
 		}
 
 		const updateData: any = { ...body };
-		if (body.assignedTo && body.assignedTo !== existing.assignedTo) {
+		if (
+			(body.assignedTo && body.assignedTo !== existing.assignedTo) ||
+			(body.technical && body.technical !== existing.technical) ||
+			(!existing.assignedDate && (body.assignedTo || body.technical))
+		) {
 			updateData.assignedDate = getTodayIso();
 		}
 		if (body.offerDate) {
@@ -1491,6 +1500,51 @@ export const sendForReview = async (
 			action: "RFQ_SENT_FOR_REVIEW",
 			details: { enquiryId: id, rfqId: updated.rfqId },
 		});
+
+		// Trigger Review Notification Emails asynchronously
+		try {
+			const reviewerUsers: any[] = await User.find({
+				role: { $in: ["ADMIN", "CO", "GM", "PRODUCTION_HEAD"] },
+			}).lean();
+
+			const reviewerEmails = new Set<string>();
+			reviewerUsers.forEach((u) => {
+				if (u.email && u.email.includes("@")) {
+					reviewerEmails.add(u.email.trim());
+				}
+			});
+
+			if (reviewerEmails.size === 0) {
+				const smtpUser = (process.env.SMTP_USER || process.env.IMAP_USER || "").trim();
+				if (smtpUser && smtpUser.includes("@")) {
+					reviewerEmails.add(smtpUser);
+				}
+			}
+
+			const submitterEmail = req.user?.email || "Engineering Team Member";
+
+			for (const email of Array.from(reviewerEmails)) {
+				sendRfqReviewRequiredEmail({
+					toEmail: email,
+					reviewerName: "Management Reviewer",
+					submitterEmail,
+					enquiry: {
+						id: updated._id.toString(),
+						rfqId: updated.rfqId,
+						companyName: updated.companyName || "Customer",
+						contactPerson: updated.contactPerson,
+						itemDescription: updated.itemDescription,
+						technical: updated.technical || updated.assignedTo,
+						salesResponsibility: updated.salesResponsibility,
+						driveFolderUrl: updated.driveFolderUrl,
+					},
+				}).catch((e) =>
+					console.error(`Error sending review email to ${email}:`, e.message),
+				);
+			}
+		} catch (emailErr: any) {
+			console.warn("[sendForReview] Email notification trigger warning:", emailErr.message);
+		}
 
 		return res.json({
 			success: true,
@@ -1690,6 +1744,40 @@ export const approveReview = async (
 			message: `Costing for ${updated.companyName} (${updated.rfqId}) granted Final Approval by Admin (${approverName}). Ready for offer dispatch.`,
 			type: "SYSTEM",
 		});
+
+		// Trigger Email Notification to Sales Person to dispatch offer to client
+		const salesAssignee = updated.salesResponsibility || updated.assignedTo;
+		let salesEmail = "";
+		if (salesAssignee) {
+			if (salesAssignee.includes("@")) {
+				salesEmail = salesAssignee;
+			} else {
+				const salesUser: any = await User.findOne({
+					name: { $regex: new RegExp(`^${salesAssignee.trim()}$`, "i") },
+				}).lean();
+				const legacyAssignee: any = await AssigneeEmail.findOne({
+					name: { $regex: new RegExp(`^${salesAssignee.trim()}$`, "i") },
+				}).lean();
+				salesEmail = salesUser?.email || legacyAssignee?.email || "";
+			}
+		}
+
+		if (salesEmail) {
+			sendCostingApprovedEmail({
+				toEmail: salesEmail,
+				salesPersonName: salesAssignee || "Sales Lead",
+				approverEmail: approverName,
+				enquiry: {
+					id: updated._id.toString(),
+					rfqId: updated.rfqId,
+					companyName: updated.companyName,
+					offerNo: finalOfferNo,
+					offerDate: finalOfferDate,
+					itemDescription: updated.itemDescription,
+					driveFolderUrl: updated.driveFolderUrl,
+				},
+			}).catch((err) => console.error("Error sending approval email:", err));
+		}
 
 		await logActivity({
 			userId: req.user?.userId,
@@ -2203,6 +2291,98 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 				followupRemarks: existing.followupRemarks,
 				nextActionDate: existing.nextActionDate,
 				lastCallDate: existing.lastCallDate,
+			},
+		});
+	} catch (error: any) {
+		return res.status(500).json({ success: false, message: error.message });
+	}
+};
+
+export const sendClientFollowupEmailApi = async (
+	req: AuthenticatedRequest,
+	res: Response,
+) => {
+	try {
+		const id = req.params.id;
+		if (!id) {
+			return res
+				.status(400)
+				.json({ success: false, message: "Invalid enquiry ID" });
+		}
+
+		const existing: any = await Enquiry.findById(id);
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		const clientEmail = req.body.clientEmail || existing.email;
+		if (!clientEmail || !clientEmail.includes("@")) {
+			return res.status(400).json({
+				success: false,
+				message: "Client email address is missing or invalid",
+			});
+		}
+
+		let salesName = req.user?.email || "Sales Team";
+		let salesEmail = req.user?.email || "";
+		if (req.user?.userId) {
+			const u: any = await User.findById(req.user.userId).lean();
+			if (u && u.name) {
+				salesName = u.name;
+				salesEmail = u.email;
+			}
+		}
+
+		const sent = await sendClientPostOfferFollowupEmail({
+			toClientEmail: clientEmail,
+			clientName: existing.contactPerson || existing.companyName,
+			salesEmail,
+			salesName,
+			enquiry: {
+				id: existing._id.toString(),
+				rfqId: existing.rfqId,
+				companyName: existing.companyName,
+				offerNo: existing.offerNo,
+				itemDescription: existing.itemDescription,
+			},
+		});
+
+		if (!sent) {
+			return res.status(500).json({
+				success: false,
+				message: "Failed to send client email. Please verify SMTP credentials.",
+			});
+		}
+
+		const followupEntry = {
+			type: "Email",
+			note: `Sent client follow-up email regarding offer ${existing.offerNo || existing.rfqId} to ${clientEmail}`,
+			author: `${salesName} (${salesEmail})`,
+			authorEmail: salesEmail,
+			createdAt: new Date().toISOString(),
+		};
+
+		if (!Array.isArray(existing.followups)) existing.followups = [];
+		existing.followups.push(followupEntry);
+
+		const headerStr = `[EMAIL - ${salesName} - ${getTodayIso()}]`;
+		const newNoteText = `${headerStr}\nSent follow-up email to client <${clientEmail}> regarding offer status.`;
+		existing.remarks = "Sent client follow-up email";
+		existing.followupRemarks = existing.followupRemarks
+			? `${newNoteText}\n\n${existing.followupRemarks}`
+			: newNoteText;
+
+		await existing.save();
+
+		return res.json({
+			success: true,
+			message: `Follow-up email sent to client (${clientEmail})`,
+			data: {
+				id: existing._id.toString(),
+				followups: existing.followups,
+				followupRemarks: existing.followupRemarks,
 			},
 		});
 	} catch (error: any) {

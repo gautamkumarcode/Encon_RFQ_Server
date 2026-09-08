@@ -14,6 +14,7 @@ import notificationRoutes from './routes/notificationRoutes';
 import rfqRoutes from './routes/rfqRoutes';
 
 import { InboxService } from './services/inboxService';
+import { RfqNotificationService } from './services/rfqNotificationService';
 
 import { connectDB } from './config/db';
 
@@ -117,6 +118,13 @@ if (require.main === module || !process.env.VERCEL) {
         InboxService.ingest().catch((err) => console.error('[Background Inbox Poller] Error:', err));
       }, pollSecs * 1000);
     }
+
+    // Background RFQ TAT Expiration & Overdue Notification Poller (runs every 1 hour)
+    setInterval(() => {
+      RfqNotificationService.checkAndSendTatReminders().catch((err) =>
+        console.error('[Background TAT Notification Poller] Error:', err)
+      );
+    }, 60 * 60 * 1000);
   });
 }
 
