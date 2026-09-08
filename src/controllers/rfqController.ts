@@ -2263,7 +2263,14 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 				.json({ success: false, message: "Invalid enquiry ID" });
 		}
 
-		const { type = "Followup", note, nextActionDate, lastCallDate } = req.body;
+		const {
+			type = "Followup",
+			note,
+			nextActionDate,
+			lastCallDate,
+			logDate,
+			createdAt: customCreatedAt,
+		} = req.body;
 		if (!note || !note.trim()) {
 			return res
 				.status(400)
@@ -2293,12 +2300,40 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 			}
 		}
 
+		// Calculate entry date from user input (logDate / lastCallDate / customCreatedAt) or current time
+		const dateSource = logDate || lastCallDate || customCreatedAt;
+		let entryDate: Date;
+		if (dateSource) {
+			if (
+				typeof dateSource === "string" &&
+				/^\d{4}-\d{2}-\d{2}$/.test(dateSource.trim())
+			) {
+				const now = new Date();
+				const [year, month, day] = dateSource.trim().split("-").map(Number);
+				entryDate = new Date(
+					year,
+					month - 1,
+					day,
+					now.getHours(),
+					now.getMinutes(),
+					now.getSeconds(),
+				);
+			} else {
+				entryDate = new Date(dateSource);
+			}
+		} else {
+			entryDate = new Date();
+		}
+		if (isNaN(entryDate.getTime())) {
+			entryDate = new Date();
+		}
+
 		const followupEntry = {
 			type: type || "Followup",
 			note: note.trim(),
 			author: authorName,
 			authorEmail: authorEmail,
-			createdAt: new Date().toISOString(),
+			createdAt: entryDate.toISOString(),
 			nextActionDate: nextActionDate || "",
 		};
 
@@ -2307,15 +2342,18 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 		}
 		existing.followups.push(followupEntry);
 
-		const authorDisplay = authorName.replace(/\s*\([^)]*\)/, "").trim() || "Team Member";
-		const dateFormatted = new Date().toLocaleDateString("en-US", {
+		const authorDisplay =
+			authorName.replace(/\s*\([^)]*\)/, "").trim() || "Team Member";
+		const dateFormatted = entryDate.toLocaleDateString("en-US", {
 			month: "short",
 			day: "numeric",
 			year: "numeric",
 			hour: "2-digit",
 			minute: "2-digit",
 		});
-		const headerStr = `[${(type || "Followup").toUpperCase()} - ${authorDisplay} - ${dateFormatted}]`;
+		const headerStr = `[${(
+			type || "Followup"
+		).toUpperCase()} - ${authorDisplay} - ${dateFormatted}]`;
 		const newNoteText = `${headerStr}\n${note.trim()}`;
 
 		existing.remarks = note.trim();
@@ -2325,8 +2363,8 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 			: newNoteText;
 
 		if (nextActionDate) existing.nextActionDate = nextActionDate;
-		if (lastCallDate || type === "Call")
-			existing.lastCallDate = lastCallDate || getTodayIso();
+		if (lastCallDate || logDate || type === "Call")
+			existing.lastCallDate = lastCallDate || logDate || getTodayIso();
 
 		await existing.save();
 
