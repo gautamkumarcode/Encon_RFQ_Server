@@ -3047,65 +3047,179 @@ export const getDirectory = async (
 	res: Response,
 ) => {
 	try {
+		// 1. Fetch system users from DB (primary source of truth)
 		const systemUsers: any[] = await User.find({ status: "ACTIVE" })
 			.populate("roleId", "name")
 			.select("name email roleId")
 			.sort({ name: 1 })
 			.lean();
 
-		const userMap = new Map<string, { email: string; role: string }>();
+		// Fetch inactive/disabled users to exclude them from directory
+		const inactiveUsers: any[] = await User.find({ status: { $ne: "ACTIVE" } })
+			.select("name email")
+			.lean();
+
+		const inactiveEmailSet = new Set<string>();
+		const inactiveNameSet = new Set<string>();
+
+		inactiveUsers.forEach((u) => {
+			if (u.email && u.email.trim()) {
+				inactiveEmailSet.add(u.email.trim().toLowerCase());
+			}
+			if (u.name && u.name.trim()) {
+				inactiveNameSet.add(u.name.trim().toLowerCase());
+			}
+		});
+
+		// Map keyed by normalized email address to guarantee NO email duplicates
+		const emailMap = new Map<
+			string,
+			{ name: string; email: string; role: string; aliases: Set<string>; isUser: boolean }
+		>();
+
+		// Helper to index system users by email
 		systemUsers.forEach((u) => {
-			if (u.name) {
-				userMap.set(u.name.toLowerCase(), {
-					email: u.email,
+			if (u.email && u.email.trim()) {
+				const emailKey = u.email.trim().toLowerCase();
+				const primaryName = u.name ? u.name.trim() : u.email.trim();
+				emailMap.set(emailKey, {
+					name: primaryName,
+					email: u.email.trim(),
 					role: u.roleId?.name || "",
+					aliases: new Set<string>(),
+					isUser: true,
 				});
 			}
 		});
 
+		// 2. Fetch legacy assignees (AssigneeEmail collection)
 		const legacyAssignees: any[] = await AssigneeEmail.find().lean();
+		// Build lookup from legacy name to email
+		const legacyNameToEmailMap = new Map<string, string>();
+
 		legacyAssignees.forEach((a) => {
-			if (a.name && !userMap.has(a.name.toLowerCase())) {
-				userMap.set(a.name.toLowerCase(), { email: a.email, role: "" });
+			if (!a.name || !a.name.trim()) return;
+			const normName = a.name.trim().toLowerCase();
+			const normEmail = a.email ? a.email.trim().toLowerCase() : "";
+
+			// Skip if legacy assignee belongs to an inactive/disabled user account
+			if (
+				(normEmail && inactiveEmailSet.has(normEmail)) ||
+				inactiveNameSet.has(normName)
+			) {
+				return;
+			}
+
+			if (normEmail) {
+				legacyNameToEmailMap.set(normName, normEmail);
+				if (emailMap.has(normEmail)) {
+					// Add legacy name as an alias to the main user entry
+					const existing = emailMap.get(normEmail)!;
+					if (existing.name.toLowerCase() !== normName) {
+						existing.aliases.add(a.name.trim());
+					}
+				} else {
+					// Add as new entry if email not present in system Users
+					emailMap.set(normEmail, {
+						name: a.name.trim(),
+						email: a.email.trim(),
+						role: "",
+						aliases: new Set<string>(),
+						isUser: false,
+					});
+				}
 			}
 		});
 
+		// 3. Scan distinct string names in Enquiry collection
 		const [assignedToNames, salesNames, techNames] = await Promise.all([
 			Enquiry.distinct("assignedTo"),
 			Enquiry.distinct("salesResponsibility"),
 			Enquiry.distinct("technical"),
 		]);
 
-		const nameSet = new Set<string>();
-		systemUsers.forEach((u) => {
-			if (u.name) nameSet.add(u.name);
-		});
-		legacyAssignees.forEach((a) => {
-			if (a.name) nameSet.add(a.name);
-		});
+		// Build lookup of known primary names and existing aliases
+		const knownNamesMap = new Map<string, string>(); // normName -> emailKey
+		for (const [emailKey, entry] of emailMap.entries()) {
+			knownNamesMap.set(entry.name.toLowerCase(), emailKey);
+			entry.aliases.forEach((alias) => {
+				knownNamesMap.set(alias.toLowerCase(), emailKey);
+			});
+		}
+
+		const unmappedNamesSet = new Set<string>();
 
 		[...assignedToNames, ...salesNames, ...techNames].forEach((val) => {
-			if (val) {
-				String(val)
-					.split("/")
-					.forEach((t: string) => {
-						const trimmed = t.trim();
-						if (trimmed) nameSet.add(trimmed);
-					});
-			}
+			if (!val) return;
+			String(val)
+				.split("/")
+				.forEach((t: string) => {
+					const trimmed = t.trim();
+					if (!trimmed) return;
+					const normTrimmed = trimmed.toLowerCase();
+
+					// Skip inactive/disabled names
+					if (inactiveNameSet.has(normTrimmed)) {
+						return;
+					}
+
+					// If already mapped to an active email
+					if (knownNamesMap.has(normTrimmed)) {
+						return;
+					}
+
+					// Check if legacy name maps to an email
+					if (legacyNameToEmailMap.has(normTrimmed)) {
+						const mappedEmail = legacyNameToEmailMap.get(normTrimmed)!;
+						if (emailMap.has(mappedEmail)) {
+							const existing = emailMap.get(mappedEmail)!;
+							if (existing.name.toLowerCase() !== normTrimmed) {
+								existing.aliases.add(trimmed);
+								knownNamesMap.set(normTrimmed, mappedEmail);
+							}
+							return;
+						}
+					}
+
+					// Check if string contains email in parentheses e.g. "J. P Sir (vadodara@encon.co.in)"
+					const match = trimmed.match(/\(([^)]+@[^)]+)\)/);
+					if (match && match[1]) {
+						const extractedEmail = match[1].trim().toLowerCase();
+						if (inactiveEmailSet.has(extractedEmail)) {
+							return; // Skip inactive user email
+						}
+						if (emailMap.has(extractedEmail)) {
+							const existing = emailMap.get(extractedEmail)!;
+							if (existing.name.toLowerCase() !== normTrimmed) {
+								existing.aliases.add(trimmed);
+								knownNamesMap.set(normTrimmed, extractedEmail);
+							}
+							return;
+						}
+					}
+
+					// If it's a completely unmapped string without email
+					unmappedNamesSet.add(trimmed);
+				});
 		});
 
-		const result = Array.from(nameSet)
-			.filter(Boolean)
-			.sort((a, b) => a.localeCompare(b))
-			.map((name) => {
-				const info = userMap.get(name.toLowerCase());
-				return {
-					name,
-					email: info?.email || "",
-					role: info?.role || "",
-				};
-			});
+		// 4. Construct final deduplicated list
+		const result = [
+			...Array.from(emailMap.values()).map((entry) => ({
+				name: entry.name,
+				email: entry.email,
+				role: entry.role,
+				aliases: Array.from(entry.aliases),
+			})),
+			...Array.from(unmappedNamesSet).map((name) => ({
+				name,
+				email: "",
+				role: "",
+				aliases: [],
+			})),
+		];
+
+		result.sort((a, b) => a.name.localeCompare(b.name));
 
 		return res.json({ success: true, data: result });
 	} catch (error: any) {
