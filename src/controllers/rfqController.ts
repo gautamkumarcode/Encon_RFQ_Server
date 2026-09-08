@@ -10,6 +10,7 @@ import { Attachment } from "../models/Attachment";
 import { Enquiry } from "../models/Enquiry";
 import { Notification } from "../models/Notification";
 import { User } from "../models/User";
+import { RolePermission } from "../models/Permission";
 import { sendAssignmentEmail } from "../services/emailService";
 import {
 	ensureEnquiryDriveFolder,
@@ -350,13 +351,30 @@ export function canSeeFullRfqList(user?: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
-	if (FULL_ACCESS_ROLES.has(roleName)) return true;
+
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+
+	if (Array.isArray(user.permissions)) {
+		const perms = user.permissions;
+		if (
+			perms.includes("RFQ_MGMT:MANAGE") ||
+			perms.includes("RFQ_MGMT:READ") ||
+			perms.includes("RFQ_MGMT:READ_ALL") ||
+			perms.includes("RFQ:READ_ALL") ||
+			perms.includes("USER_MGMT:MANAGE")
+		) {
+			return true;
+		}
+	}
+
 	if (
-		Array.isArray(user.permissions) &&
-		(user.permissions.includes("RFQ:READ_ALL") ||
-			user.permissions.includes("USER_MGMT:MANAGE"))
-	)
+		FULL_ACCESS_ROLES.has(roleName) ||
+		roleName.includes("SALES") ||
+		roleName.includes("MARKETING")
+	) {
 		return true;
+	}
+
 	return false;
 }
 
@@ -368,12 +386,33 @@ export function canReviewRfq(user?: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
-	if (CAN_REVIEW_ROLES.has(roleName)) return true;
+
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+
+	if (Array.isArray(user.permissions)) {
+		const perms = user.permissions;
+		if (
+			perms.includes("RFQ_MGMT:WRITE") ||
+			perms.includes("RFQ_MGMT:MANAGE") ||
+			perms.includes("RFQ:REVIEW") ||
+			perms.includes("RFQ:VERIFY") ||
+			perms.includes("RFQ:APPROVE")
+		) {
+			return true;
+		}
+	}
+
 	if (
-		Array.isArray(user.permissions) &&
-		user.permissions.includes("RFQ:REVIEW")
-	)
+		CAN_REVIEW_ROLES.has(roleName) ||
+		roleName.includes("TECH") ||
+		roleName.includes("DESIGN") ||
+		roleName.includes("REVIEW") ||
+		roleName.includes("APPROV") ||
+		roleName.includes("VERIF")
+	) {
 		return true;
+	}
+
 	return false;
 }
 
@@ -402,9 +441,29 @@ export function canEditRfq(user?: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
-	if (CAN_EDIT_ROLES.has(roleName)) return true;
-	if (Array.isArray(user.permissions) && user.permissions.includes("RFQ:WRITE"))
+
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+
+	if (Array.isArray(user.permissions)) {
+		const perms = user.permissions;
+		if (
+			perms.includes("RFQ_MGMT:WRITE") ||
+			perms.includes("RFQ_MGMT:MANAGE") ||
+			perms.includes("RFQ:WRITE") ||
+			perms.includes("RFQ:EDIT")
+		) {
+			return true;
+		}
+	}
+
+	if (
+		CAN_EDIT_ROLES.has(roleName) ||
+		roleName.includes("SALES") ||
+		roleName.includes("MARKETING")
+	) {
 		return true;
+	}
+
 	return false;
 }
 
@@ -412,12 +471,49 @@ async function getAuthenticatedUserInfo(req: AuthenticatedRequest) {
 	if (!req.user?.userId) return null;
 	const dbUser: any = await User.findById(req.user.userId).populate("roleId");
 	if (!dbUser) return null;
+
+	let permissions: string[] = [];
+	if (dbUser.roleId?._id) {
+		const rolePerms = await RolePermission.find({
+			roleId: dbUser.roleId._id,
+		}).populate("permissionId");
+		permissions = rolePerms
+			.filter((rp: any) => rp.permissionId)
+			.map((rp: any) => `${rp.permissionId.module}:${rp.permissionId.action}`);
+	}
+
 	return {
 		id: dbUser._id.toString(),
 		name: dbUser.name,
 		email: dbUser.email,
 		roleName: dbUser.roleId?.name || "USER",
+		permissions,
 	};
+}
+
+export function getUserRfqScopeWhere(userInfo?: any): any {
+	if (!userInfo || canSeeFullRfqList(userInfo)) {
+		return {};
+	}
+
+	const assigneeOrConditions: any[] = [
+		{ assignedTo: userInfo.name },
+		{ assignedTo: userInfo.email },
+		{ salesResponsibility: userInfo.name },
+		{ technical: userInfo.name },
+	];
+
+	if (canReviewRfq(userInfo) || canFinalApproveRfq(userInfo)) {
+		assigneeOrConditions.push({
+			status: {
+				$regex:
+					"^(Under review|Pending Verification|Pending Approval|Submitted for Review|In Review|Review|Verified|Approved)$",
+				$options: "i",
+			},
+		});
+	}
+
+	return { $or: assigneeOrConditions };
 }
 
 export function isAdmin(user: any): boolean {
@@ -428,23 +524,31 @@ export function isAdmin(user: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
+
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+
+	if (Array.isArray(user.permissions)) {
+		const perms = user.permissions;
+		if (
+			perms.includes("RFQ_MGMT:DELETE") ||
+			perms.includes("RFQ_MGMT:MANAGE") ||
+			perms.includes("RFQ:DELETE") ||
+			perms.includes("USER_MGMT:MANAGE")
+		) {
+			return true;
+		}
+	}
+
 	if (
-		roleName === "ADMIN" ||
-		roleName === "CO" ||
-		roleName === "GM" ||
 		roleName === "PRODUCTION_HEAD" ||
 		roleName === "SALES" ||
 		roleName.includes("SALES") ||
 		roleName.includes("MARKETING") ||
 		roleName.includes("SELLER")
-	)
+	) {
 		return true;
-	if (
-		Array.isArray(user.permissions) &&
-		(user.permissions.includes("RFQ:DELETE") ||
-			user.permissions.includes("USER_MGMT:MANAGE"))
-	)
-		return true;
+	}
+
 	return false;
 }
 
@@ -630,22 +734,16 @@ export const getEnquiries = async (
 			}
 		}
 
-		// 4. User role scoping
+		// 4. User role scoping (Admin & Sales see all; others see assigned + under review/approval if reviewer/approver)
 		if (!isFullAccess && userInfo) {
-			const userAssigneeFilter = {
-				$or: [
-					{ assignedTo: userInfo.name },
-					{ assignedTo: userInfo.email },
-					{ salesResponsibility: userInfo.name },
-					{ technical: userInfo.name },
-				],
-			};
-
-			if (where.$or) {
-				where.$and = [{ $or: where.$or }, userAssigneeFilter];
-				delete where.$or;
-			} else {
-				where.$or = userAssigneeFilter.$or;
+			const scopeWhere = getUserRfqScopeWhere(userInfo);
+			if (scopeWhere.$or) {
+				if (where.$or) {
+					where.$and = [{ $or: where.$or }, { $or: scopeWhere.$or }];
+					delete where.$or;
+				} else {
+					where.$or = scopeWhere.$or;
+				}
 			}
 		}
 
@@ -834,19 +932,8 @@ export const getOfferMapping = async (
 		const userInfo = await getAuthenticatedUserInfo(req);
 		const isFullAccess = canSeeFullRfqList(userInfo || req.user);
 
-		const userScopeWhere =
-			!isFullAccess && userInfo
-				? {
-						$or: [
-							{ assignedTo: userInfo.name },
-							{ assignedTo: userInfo.email },
-							{ salesResponsibility: userInfo.name },
-							{ technical: userInfo.name },
-						],
-					}
-				: {};
-
-		const where: any = { ...userScopeWhere };
+		const scopeWhere = getUserRfqScopeWhere(userInfo || req.user);
+		const where: any = { ...scopeWhere };
 
 		if (show === "quoted") {
 			where.offerNo = { $ne: "" };
@@ -866,7 +953,7 @@ export const getOfferMapping = async (
 			}
 		}
 
-		const all: any[] = await Enquiry.find(userScopeWhere)
+		const all: any[] = await Enquiry.find(scopeWhere)
 			.sort({ _id: -1 })
 			.lean();
 		const filtered: any[] = await Enquiry.find(where)
@@ -910,17 +997,7 @@ export const getAnalyticsDashboard = async (
 		const userInfo = await getAuthenticatedUserInfo(req);
 		const isFullAccess = canSeeFullRfqList(userInfo || req.user);
 
-		const userScopeWhere =
-			!isFullAccess && userInfo
-				? {
-						$or: [
-							{ assignedTo: userInfo.name },
-							{ assignedTo: userInfo.email },
-							{ salesResponsibility: userInfo.name },
-							{ technical: userInfo.name },
-						],
-					}
-				: {};
+		const userScopeWhere = getUserRfqScopeWhere(userInfo || req.user);
 
 		const enquiries: any[] = await Enquiry.find(userScopeWhere)
 			.select("-emailBody")
@@ -1066,10 +1143,18 @@ export const getEnquiryById = async (
 				(enquiry.salesResponsibility &&
 					enquiry.salesResponsibility === userInfo.name) ||
 				(enquiry.technical && enquiry.technical === userInfo.name);
-			if (!isAssigned) {
+
+			const isReviewable =
+				(canReviewRfq(userInfo) || canFinalApproveRfq(userInfo)) &&
+				/^(Under review|Pending Verification|Pending Approval|Submitted for Review|In Review|Review|Verified|Approved)$/i.test(
+					enquiry.status || ""
+				);
+
+			if (!isAssigned && !isReviewable) {
 				return res.status(403).json({
 					success: false,
-					message: "Access Denied: You can only view RFQs assigned to you.",
+					message:
+						"Access Denied: You can only view assigned RFQs or RFQs under review/approval.",
 				});
 			}
 		}
