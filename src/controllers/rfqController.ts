@@ -432,7 +432,11 @@ export function isAdmin(user: any): boolean {
 		roleName === "ADMIN" ||
 		roleName === "CO" ||
 		roleName === "GM" ||
-		roleName === "PRODUCTION_HEAD"
+		roleName === "PRODUCTION_HEAD" ||
+		roleName === "SALES" ||
+		roleName.includes("SALES") ||
+		roleName.includes("MARKETING") ||
+		roleName.includes("SELLER")
 	)
 		return true;
 	if (
@@ -2091,7 +2095,7 @@ export const deleteEnquiry = async (
 		if (req.user && !isAdmin(req.user)) {
 			return res.status(403).json({
 				success: false,
-				message: "Admin privileges required to delete RFQ records.",
+				message: "Sufficient privileges required to delete RFQ records.",
 			});
 		}
 
@@ -2126,7 +2130,7 @@ export const bulkDeleteEnquiries = async (
 		if (req.user && !isAdmin(req.user)) {
 			return res.status(403).json({
 				success: false,
-				message: "Admin privileges required to bulk delete RFQ records.",
+				message: "Sufficient privileges required to bulk delete RFQ records.",
 			});
 		}
 
