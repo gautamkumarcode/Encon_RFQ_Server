@@ -3,8 +3,10 @@ import { User } from '../models/User';
 
 export interface RFQSummary {
   totalRFQs: number;
+  totalLiveRFQs: number;
   pendingRFQs: number;
   approvedRFQs: number;
+  offersSentRFQs: number;
   rejectedRFQs: number;
   recentRFQs: Array<{
     id: string;
@@ -45,21 +47,26 @@ export class IntegrationService {
         .lean();
 
       const totalRFQs = allEnquiries.length;
+      const CLOSED_SET = new Set(['closed', 'regret', 'po received']);
 
-      // Exact state matching RFQ Tracker tabs:
-      // 'Under review' -> Under Review tab
-      // 'Approved' -> Approved tab
-      // 'Offer Sent' / 'PO Received' / 'Closed' / 'REGRET'
+      const totalLiveRFQs = allEnquiries.filter(
+        (e) => !CLOSED_SET.has((e.status || '').toLowerCase())
+      ).length;
+
       const pendingRFQs = allEnquiries.filter(
-        (e) => (e.status || '').toLowerCase() === 'under review'
+        (e) => (e.status || '').toLowerCase() === 'under review' || (e.status || '').toLowerCase() === 'verified'
       ).length;
 
       const approvedRFQs = allEnquiries.filter(
         (e) => (e.status || '').toLowerCase() === 'approved'
       ).length;
 
+      const offersSentRFQs = allEnquiries.filter(
+        (e) => (e.status || '').toLowerCase() === 'offer sent'
+      ).length;
+
       const rejectedRFQs = allEnquiries.filter(
-        (e) => (e.status || '').toLowerCase() === 'regret' || (e.status || '').toLowerCase() === 'closed'
+        (e) => CLOSED_SET.has((e.status || '').toLowerCase())
       ).length;
 
       const recentRFQs = allEnquiries.slice(0, 5).map((e) => ({
@@ -74,16 +81,20 @@ export class IntegrationService {
 
       return {
         totalRFQs,
+        totalLiveRFQs,
         pendingRFQs,
         approvedRFQs,
+        offersSentRFQs,
         rejectedRFQs,
         recentRFQs,
       };
     } catch (error) {
       return {
         totalRFQs: 0,
+        totalLiveRFQs: 0,
         pendingRFQs: 0,
         approvedRFQs: 0,
+        offersSentRFQs: 0,
         rejectedRFQs: 0,
         recentRFQs: [],
       };

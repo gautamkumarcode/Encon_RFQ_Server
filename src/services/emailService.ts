@@ -522,65 +522,88 @@ export async function sendTatExpiredReminderEmail(options: SendTatExpiredReminde
   }
 }
 
-export interface SendClientPostOfferFollowupEmailOptions {
-  toClientEmail: string;
-  clientName: string;
-  salesEmail?: string;
-  salesName?: string;
+export interface SendSalesPostOfferFollowupReminderEmailOptions {
+  toSalesEmail: string;
+  salesPersonName: string;
   enquiry: {
     id?: number | string;
     rfqId: string;
     companyName: string;
+    contactPerson?: string;
+    mobile?: string;
+    email?: string;
     offerNo?: string;
+    offerDate?: string;
     itemDescription?: string;
+    driveFolderUrl?: string;
   };
 }
 
 /**
- * 3. Send Post-Offer Sent Client Follow-Up Email & Inquiry.
+ * Send Post-Offer Client Follow-Up Reminder email to the Sales Lead.
  */
-export async function sendClientPostOfferFollowupEmail(options: SendClientPostOfferFollowupEmailOptions): Promise<boolean> {
-  const { toClientEmail, clientName, salesEmail, salesName, enquiry } = options;
+export async function sendSalesPostOfferFollowupReminderEmail(options: SendSalesPostOfferFollowupReminderEmailOptions): Promise<boolean> {
+  const { toSalesEmail, salesPersonName, enquiry } = options;
 
-  if (!toClientEmail || !toClientEmail.includes('@')) return false;
+  if (!toSalesEmail || !toSalesEmail.includes('@')) return false;
 
   const config = getSmtpConfig();
   if (!config.pass) return false;
 
-  const subject = `ENCON Proposal Follow-up: Offer ${enquiry.offerNo || enquiry.rfqId} - ${enquiry.companyName}`;
-
+  const subject = `[ACTION REQUIRED] Client Follow-up Reminder: Offer ${enquiry.offerNo || enquiry.rfqId} (${enquiry.companyName})`;
+  const portalUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+  const rfqLink = `${portalUrl}/rfq/${enquiry.id}`;
   const htmlContent = `
-    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #ffffff; color: #1e293b; padding: 24px; border-radius: 12px; border: 1px solid #e2e8f0;">
-      <div style="border-bottom: 2px solid #0284c7; padding-bottom: 12px; margin-bottom: 20px;">
-        <h2 style="color: #0284c7; margin: 0; font-size: 18px;">Encon Thermal Engineers Pvt. Ltd.</h2>
-        <p style="color: #64748b; font-size: 12px; margin: 4px 0 0 0;">Commercial & Technical Proposal Follow-up</p>
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
+      <div style="border-bottom: 2px solid #06b6d4; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">📞 Client Follow-up Reminder for Sales</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Encon Command Center Automated Reminder</p>
       </div>
 
-      <p style="font-size: 14px; color: #334155;">Dear <strong>${clientName || 'Valued Customer'}</strong>,</p>
+      <p style="font-size: 14px; color: #e2e8f0;">Hello <strong>${salesPersonName || 'Sales Lead'}</strong>,</p>
 
-      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
-        We recently submitted our technical and commercial offer <strong>${enquiry.offerNo || enquiry.rfqId}</strong> for <strong>${enquiry.itemDescription || 'your requirement'}</strong>.
+      <p style="font-size: 14px; color: #cbd5e1; line-height: 1.5;">
+        This is a scheduled reminder to follow up with customer <strong>${enquiry.companyName}</strong> regarding offer proposal <strong>${enquiry.offerNo || enquiry.rfqId}</strong>. Please contact the client to ask about proposal receipt and address any technical or commercial queries.
       </p>
 
-      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
-        We wanted to follow up to ensure that the proposal reached you safely and to check if you have any technical queries or require any clarification regarding our offer details.
-      </p>
-
-      <div style="background-color: #f8fafc; border: 1px solid #cbd5e1; border-radius: 8px; padding: 16px; margin: 20px 0;">
-        <h4 style="color: #0284c7; margin: 0 0 10px 0; font-size: 14px;">📄 Proposal Summary</h4>
-        <p style="font-size: 13px; color: #475569; margin: 4px 0;"><strong>Offer Reference:</strong> ${enquiry.offerNo || enquiry.rfqId}</p>
-        <p style="font-size: 13px; color: #475569; margin: 4px 0;"><strong>Requirement:</strong> ${enquiry.itemDescription || 'Equipment Proposal'}</p>
+      <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <h4 style="color: #38bdf8; margin: 0 0 12px 0; font-size: 14px;">🏢 Customer & Offer Details</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1;">
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>Offer Number:</strong></td>
+            <td style="padding: 6px 0; color: #fbbf24; font-weight: bold; font-family: monospace;">${enquiry.offerNo || enquiry.rfqId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Customer:</strong></td>
+            <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${enquiry.companyName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Contact Person:</strong></td>
+            <td style="padding: 6px 0; color: #e2e8f0;">${enquiry.contactPerson || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Mobile / Phone:</strong></td>
+            <td style="padding: 6px 0; color: #34d399; font-weight: bold;">${enquiry.mobile || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Client Email:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8;">${enquiry.email || 'N/A'}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; vertical-align: top;"><strong>Requirement:</strong></td>
+            <td style="padding: 6px 0; color: #f1f5f9; line-height: 1.4;">${enquiry.itemDescription || 'Proposal Requirement'}</td>
+          </tr>
+        </table>
       </div>
 
-      <p style="font-size: 14px; color: #334155; line-height: 1.5;">
-        Please let us know your convenient time for a quick discussion or feel free to reply directly to this email with your feedback.
-      </p>
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${rfqLink}" target="_blank" style="background-color: #06b6d4; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block; margin: 4px;">
+          🔗 Open RFQ Workstation & Log Call ↗
+        </a>
+      </div>
 
-      <div style="border-top: 1px solid #e2e8f0; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b;">
-        <p style="margin: 0 0 4px 0;">Best regards,</p>
-        <p style="margin: 0; font-weight: bold; color: #1e293b;">${salesName || 'Sales Team'}</p>
-        <p style="margin: 2px 0; color: #0284c7;">Encon Thermal Engineers Pvt. Ltd.</p>
-        <p style="margin: 2px 0;">Web: <a href="https://www.encon.co.in" target="_blank" style="color: #0284c7;">www.encon.co.in</a></p>
+      <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
+        Automated reminder from Encon Command Center.
       </div>
     </div>
   `;
@@ -588,16 +611,126 @@ export async function sendClientPostOfferFollowupEmail(options: SendClientPostOf
   try {
     const transporter = createTransporter(config);
     await transporter.sendMail({
-      from: `"${salesName || 'ENCON Sales Team'}" <${config.user}>`,
-      to: toClientEmail,
-      cc: salesEmail && salesEmail.includes('@') ? salesEmail : undefined,
+      from: `"ENCON Command Center" <${config.user}>`,
+      to: toSalesEmail,
       subject,
       html: htmlContent,
     });
-    console.log(`✉️ Post-offer follow-up email sent to Client (${toClientEmail})`);
+    console.log(`✉️ Sales post-offer follow-up reminder sent to Sales (${toSalesEmail})`);
     return true;
   } catch (err: any) {
-    console.error(`❌ Error sending client follow-up email to ${toClientEmail}:`, err.message);
+    console.error(`❌ Error sending sales follow-up reminder email to ${toSalesEmail}:`, err.message);
+    return false;
+  }
+}
+
+export async function sendClientPostOfferFollowupEmail(options: any): Promise<boolean> {
+  return sendSalesPostOfferFollowupReminderEmail({
+    toSalesEmail: options.salesEmail || options.toClientEmail,
+    salesPersonName: options.salesName || 'Sales Lead',
+    enquiry: options.enquiry,
+  });
+}
+
+export interface SendTechnicalFollowupAddedEmailOptions {
+  toSalesEmail: string;
+  salesPersonName: string;
+  authorName: string;
+  authorEmail: string;
+  type: string;
+  note: string;
+  nextActionDate?: string;
+  enquiry: {
+    id: string | number;
+    rfqId: string;
+    companyName: string;
+    itemDescription?: string;
+  };
+}
+
+/**
+ * Send an email notification to the assigned Sales Responsibility whenever a technical person or team member logs a follow-up/remark.
+ */
+export async function sendTechnicalFollowupAddedEmail(options: SendTechnicalFollowupAddedEmailOptions): Promise<boolean> {
+  const { toSalesEmail, salesPersonName, authorName, authorEmail, type, note, nextActionDate, enquiry } = options;
+
+  if (!toSalesEmail || !toSalesEmail.includes('@')) return false;
+
+  const config = getSmtpConfig();
+  if (!config.pass) return false;
+
+  const subject = `[RFQ FOLLOW-UP ALERT] New ${type} Logged on ${enquiry.rfqId} (${enquiry.companyName})`;
+  const portalUrl = (process.env.FRONTEND_URL || 'http://localhost:3000').split(',')[0].trim();
+  const rfqLink = `${portalUrl}/rfq/${enquiry.id}`;
+
+  const htmlContent = `
+    <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; background-color: #0f172a; color: #f8fafc; padding: 24px; border-radius: 16px;">
+      <div style="border-bottom: 2px solid #06b6d4; padding-bottom: 12px; margin-bottom: 20px;">
+        <h2 style="color: #38bdf8; margin: 0; font-size: 20px;">📝 New RFQ Follow-up Logged</h2>
+        <p style="color: #94a3b8; font-size: 13px; margin: 4px 0 0 0;">Technical Team Update Notification</p>
+      </div>
+
+      <p style="font-size: 14px; color: #e2e8f0;">Hello <strong>${salesPersonName || 'Sales Lead'}</strong>,</p>
+
+      <p style="font-size: 14px; color: #cbd5e1; line-height: 1.5;">
+        A new <strong>${type}</strong> entry has been logged by <strong>${authorName}</strong> (${authorEmail}) for RFQ <strong>${enquiry.rfqId}</strong> (${enquiry.companyName}).
+      </p>
+
+      <div style="background-color: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin: 20px 0;">
+        <h4 style="color: #38bdf8; margin: 0 0 12px 0; font-size: 14px;">📋 Follow-up Entry Details</h4>
+        <table style="width: 100%; border-collapse: collapse; font-size: 13px; color: #cbd5e1;">
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; width: 140px;"><strong>RFQ ID:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8; font-weight: bold;">${enquiry.rfqId}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Customer:</strong></td>
+            <td style="padding: 6px 0; color: #f8fafc; font-weight: bold;">${enquiry.companyName}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Log Type:</strong></td>
+            <td style="padding: 6px 0; color: #fbbf24; font-weight: bold;">${type}</td>
+          </tr>
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Logged By:</strong></td>
+            <td style="padding: 6px 0; color: #34d399;">${authorName}</td>
+          </tr>
+          ${nextActionDate ? `
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8;"><strong>Next Follow-up Date:</strong></td>
+            <td style="padding: 6px 0; color: #38bdf8; font-weight: bold;">${nextActionDate}</td>
+          </tr>` : ''}
+          <tr>
+            <td style="padding: 6px 0; color: #94a3b8; vertical-align: top;"><strong>Remarks / Note:</strong></td>
+            <td style="padding: 6px 0; color: #f1f5f9; line-height: 1.5; white-space: pre-wrap;">${note}</td>
+          </tr>
+        </table>
+      </div>
+
+      <div style="margin: 24px 0; text-align: center;">
+        <a href="${rfqLink}" target="_blank" style="background-color: #06b6d4; color: #ffffff; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-weight: bold; font-size: 13px; display: inline-block;">
+          🚀 Open RFQ Workstation & View History ↗
+        </a>
+      </div>
+
+      <div style="border-top: 1px solid #334155; padding-top: 16px; margin-top: 24px; font-size: 12px; color: #64748b; text-align: center;">
+        Automated notification from Encon Command Center.
+      </div>
+    </div>
+  `;
+
+  try {
+    const transporter = createTransporter(config);
+    await transporter.sendMail({
+      from: `"ENCON Command Center" <${config.user}>`,
+      to: toSalesEmail,
+      subject,
+      html: htmlContent,
+    });
+    console.log(`✉️ Technical follow-up notification email sent to Sales (${toSalesEmail})`);
+    return true;
+  } catch (err: any) {
+    console.error(`❌ Error sending technical follow-up notification email to ${toSalesEmail}:`, err.message);
     return false;
   }
 }

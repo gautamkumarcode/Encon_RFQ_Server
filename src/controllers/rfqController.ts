@@ -11,7 +11,7 @@ import { Enquiry } from "../models/Enquiry";
 import { Notification } from "../models/Notification";
 import { User } from "../models/User";
 import { RolePermission } from "../models/Permission";
-import { sendAssignmentEmail, sendCostingApprovedEmail, sendClientPostOfferFollowupEmail, sendRfqReviewRequiredEmail } from "../services/emailService";
+import { sendAssignmentEmail, sendCostingApprovedEmail, sendClientPostOfferFollowupEmail, sendRfqReviewRequiredEmail, sendTechnicalFollowupAddedEmail } from "../services/emailService";
 import {
 	ensureEnquiryDriveFolder,
 	mirrorAttachmentToDrive,
@@ -78,7 +78,7 @@ function extractTextFromDocx(buffer: Buffer): string {
 								" " +
 								matches.map((t) => t.replace(/<[^>]+>/g, "").trim()).join(" ");
 						}
-					} catch (e) {}
+					} catch (e) { }
 				}
 				offset += 30 + nameLen + extraLen + compSize;
 			} else {
@@ -101,7 +101,7 @@ export const extractOfferDetailsFromDoc = async (
 	try {
 		if (lowerFn.endsWith(".pdf") || !lowerFn.includes(".")) {
 			if (typeof (globalThis as any).DOMMatrix === "undefined") {
-				(globalThis as any).DOMMatrix = class DOMMatrix {};
+				(globalThis as any).DOMMatrix = class DOMMatrix { };
 			}
 			const pdfParseFunc =
 				typeof pdfParse === "function" ? pdfParse : require("pdf-parse");
@@ -329,9 +329,6 @@ const STANDARD_TAT_DAYS = 30;
 
 const FULL_ACCESS_ROLES = new Set([
 	"ADMIN",
-	"CO",
-	"GM",
-	"PRODUCTION_HEAD",
 	"SALES_MARKETING",
 ]);
 const CAN_REVIEW_ROLES = new Set(["ADMIN", "CO", "GM", "PRODUCTION_HEAD"]);
@@ -341,6 +338,10 @@ const CAN_EDIT_ROLES = new Set([
 	"GM",
 	"PRODUCTION_HEAD",
 	"SALES_MARKETING",
+	"TECHNICAL_PERSON",
+	"TECHNICAL",
+	"ENGINEER",
+	"DESIGNER",
 ]);
 
 export function canSeeFullRfqList(user?: any): boolean {
@@ -350,31 +351,21 @@ export function canSeeFullRfqList(user?: any): boolean {
 		user.role?.name ||
 		user.role ||
 		""
-	).toUpperCase();
+	).toUpperCase().trim();
 
-	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
-
-	if (Array.isArray(user.permissions)) {
-		const perms = user.permissions;
-		if (
-			perms.includes("RFQ_MGMT:MANAGE") ||
-			perms.includes("RFQ_MGMT:READ") ||
-			perms.includes("RFQ_MGMT:READ_ALL") ||
-			perms.includes("RFQ:READ_ALL") ||
-			perms.includes("USER_MGMT:MANAGE")
-		) {
-			return true;
-		}
-	}
-
+	// ONLY Super Admin / Admin and Sales & Marketing have full access to all RFQs
 	if (
-		FULL_ACCESS_ROLES.has(roleName) ||
+		roleName === "ADMIN" ||
+		roleName.includes("ADMIN") ||
+		roleName.includes("SUPER") ||
+		roleName === "SALES_MARKETING" ||
 		roleName.includes("SALES") ||
 		roleName.includes("MARKETING")
 	) {
 		return true;
 	}
 
+	// CO, GM, PRODUCTION_HEAD, TECHNICAL_PERSON, ENGINEERS, etc. see assigned RFQs + Under Review RFQs
 	return false;
 }
 
@@ -473,7 +464,10 @@ export function canEditRfq(user?: any): boolean {
 	if (
 		CAN_EDIT_ROLES.has(roleName) ||
 		roleName.includes("SALES") ||
-		roleName.includes("MARKETING")
+		roleName.includes("MARKETING") ||
+		roleName.includes("TECH") ||
+		roleName.includes("ENG") ||
+		roleName.includes("DESIGN")
 	) {
 		return true;
 	}
@@ -510,24 +504,56 @@ export function getUserRfqScopeWhere(userInfo?: any): any {
 		return {};
 	}
 
-	const assigneeOrConditions: any[] = [
-		{ assignedTo: userInfo.name },
-		{ assignedTo: userInfo.email },
-		{ salesResponsibility: userInfo.name },
-		{ technical: userInfo.name },
-	];
+	const nameStr = (userInfo.name || "").trim();
+	const emailStr = (userInfo.email || "").trim();
 
-	if (canReviewRfq(userInfo) || canFinalApproveRfq(userInfo)) {
+	const userNameRegex = nameStr
+		? new RegExp(`^${nameStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")
+		: null;
+	const userEmailRegex = emailStr
+		? new RegExp(`^${emailStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")
+		: null;
+
+	const assigneeOrConditions: any[] = [];
+	if (userNameRegex) {
+		assigneeOrConditions.push(
+			{ assignedTo: userNameRegex },
+			{ salesResponsibility: userNameRegex },
+			{ technical: userNameRegex },
+		);
+	}
+	if (userEmailRegex) {
+		assigneeOrConditions.push(
+			{ assignedTo: userEmailRegex },
+			{ salesResponsibility: userEmailRegex },
+			{ technical: userEmailRegex },
+		);
+	}
+
+	// For CO, GM, PRODUCTION_HEAD, and Reviewer roles: also include RFQs that are currently "Under review"
+	const roleName = (
+		userInfo.roleName ||
+		userInfo.role?.name ||
+		userInfo.role ||
+		""
+	).toUpperCase().trim();
+
+	const isReviewerRole =
+		roleName === "CO" ||
+		roleName === "GM" ||
+		roleName === "PRODUCTION_HEAD" ||
+		roleName.includes("MANAGER") ||
+		roleName.includes("HEAD") ||
+		roleName.includes("PRODUCT") ||
+		canReviewRfq(userInfo);
+
+	if (isReviewerRole) {
 		assigneeOrConditions.push({
-			status: {
-				$regex:
-					"^(Under review|Pending Verification|Pending Approval|Submitted for Review|In Review|Review|Verified|Approved)$",
-				$options: "i",
-			},
+			status: { $regex: "^Under review$", $options: "i" },
 		});
 	}
 
-	return { $or: assigneeOrConditions };
+	return assigneeOrConditions.length > 0 ? { $or: assigneeOrConditions } : { _id: null };
 }
 
 export function isAdmin(user: any): boolean {
@@ -588,6 +614,29 @@ export function canChangeStatus(user: any): boolean {
 			user.permissions.includes("RFQ:WRITE"))
 	)
 		return true;
+	return false;
+}
+
+export function canChangeAssignment(user: any): boolean {
+	if (!user) return true;
+	const roleName = (
+		user.roleName ||
+		user.role?.name ||
+		user.role ||
+		""
+	).toUpperCase();
+	if (
+		roleName === "ADMIN" ||
+		roleName === "CO" ||
+		roleName === "GM" ||
+		roleName === "PRODUCTION_HEAD" ||
+		roleName === "SALES_MARKETING" ||
+		roleName.includes("ADMIN") ||
+		roleName.includes("SALES") ||
+		roleName.includes("MARKETING")
+	) {
+		return true;
+	}
 	return false;
 }
 
@@ -847,12 +896,10 @@ export const getEnquiries = async (
 		// 8. Stats Calculation across all scope
 		const baseStatsWhere: any = {};
 		if (!isFullAccess && userInfo) {
-			baseStatsWhere.$or = [
-				{ assignedTo: userInfo.name },
-				{ assignedTo: userInfo.email },
-				{ salesResponsibility: userInfo.name },
-				{ technical: userInfo.name },
-			];
+			const scopeWhere = getUserRfqScopeWhere(userInfo);
+			if (scopeWhere.$or) {
+				baseStatsWhere.$or = scopeWhere.$or;
+			}
 		}
 
 		const allRawEnquiries: any[] = await Enquiry.find(baseStatsWhere)
@@ -970,7 +1017,7 @@ export const getOfferMapping = async (
 			}
 		}
 
-		const all: any[] = await Enquiry.find(scopeWhere)
+		const all: any[] = await Enquiry.find(where)
 			.sort({ _id: -1 })
 			.lean();
 		const filtered: any[] = await Enquiry.find(where)
@@ -1042,8 +1089,8 @@ export const getAnalyticsDashboard = async (
 		const avgOpenAge =
 			activeDaysOpen.length > 0
 				? Math.round(
-						activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
-					)
+					activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
+				)
 				: 0;
 
 		const summary = {
@@ -1154,13 +1201,17 @@ export const getEnquiryById = async (
 		const userInfo = await getAuthenticatedUserInfo(req);
 		const isFullAccess = canSeeFullRfqList(userInfo || req.user);
 		if (!isFullAccess && userInfo) {
+			const userLowerName = (userInfo.name || "").toLowerCase();
+			const userLowerEmail = (userInfo.email || "").toLowerCase();
+
 			const isAssigned =
 				(enquiry.assignedTo &&
-					(enquiry.assignedTo === userInfo.name ||
-						enquiry.assignedTo === userInfo.email)) ||
+					(enquiry.assignedTo.toLowerCase() === userLowerName ||
+						enquiry.assignedTo.toLowerCase() === userLowerEmail)) ||
 				(enquiry.salesResponsibility &&
-					enquiry.salesResponsibility === userInfo.name) ||
-				(enquiry.technical && enquiry.technical === userInfo.name);
+					enquiry.salesResponsibility.toLowerCase() === userLowerName) ||
+				(enquiry.technical &&
+					enquiry.technical.toLowerCase() === userLowerName);
 
 			const isReviewable =
 				(canReviewRfq(userInfo) || canFinalApproveRfq(userInfo)) &&
@@ -1305,14 +1356,14 @@ export const createEnquiry = async (
 				enquiry,
 				enquiry.assignedTo,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 		if (enquiry.technical && enquiry.technical !== enquiry.assignedTo) {
 			createAssignmentNotification(
 				enquiry,
 				enquiry.technical,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 
 		const cleanData = {
@@ -1417,7 +1468,7 @@ export const updateEnquiry = async (
 			return res.status(403).json({
 				success: false,
 				message:
-					"Access Denied: Technical Person is only permitted to upload documents and cannot edit RFQ details.",
+					"Access Denied: You do not have permission to edit this RFQ.",
 			});
 		}
 
@@ -1430,6 +1481,12 @@ export const updateEnquiry = async (
 		}
 
 		const updateData: any = { ...body };
+		if (!canChangeAssignment(userInfo || req.user)) {
+			updateData.assignedTo = existing.assignedTo;
+			updateData.technical = existing.technical;
+			updateData.salesResponsibility = existing.salesResponsibility;
+		}
+
 		if (
 			(body.assignedTo && body.assignedTo !== existing.assignedTo) ||
 			(body.technical && body.technical !== existing.technical) ||
@@ -1457,7 +1514,7 @@ export const updateEnquiry = async (
 				updated,
 				body.assignedTo,
 				req.user?.email || "User",
-			).catch(() => {});
+			).catch(() => { });
 		}
 
 		return res.json({
@@ -1831,12 +1888,12 @@ export const uploadAttachment = async (
 		const extracted: ExtractedOfferMetadata = isOfferDoc
 			? await extractOfferDetailsFromDoc(file.buffer, file.originalname)
 			: {
-					enquiryNo: "",
-					offerNo: "",
-					offerDate: "",
-					clientName: "",
-					projectName: "",
-				};
+				enquiryNo: "",
+				offerNo: "",
+				offerDate: "",
+				clientName: "",
+				projectName: "",
+			};
 
 		// 2. Intelligent RFQ Resolution by Enquiry No / Client Name
 		let targetEnquiryId = requestedId;
@@ -1976,7 +2033,7 @@ export const autoMapOfferDocApi = async (
 			file.mimetype,
 			file.buffer,
 			"offer",
-		).catch(() => {});
+		).catch(() => { });
 
 		return res.json({
 			success: true,
@@ -2072,11 +2129,18 @@ export const inlineUpdateField = async (
 			return res.status(403).json({
 				success: false,
 				message:
-					"Access Denied: Technical Person is only permitted to upload documents and cannot edit RFQ details.",
+					"Access Denied: You do not have permission to edit this RFQ.",
 			});
 		}
 
 		const { field, value } = req.body;
+		if ((field === "assignedTo" || field === "salesResponsibility" || field === "technical") && !canChangeAssignment(userInfo || req.user)) {
+			return res.status(403).json({
+				success: false,
+				message: "Access Denied: Technical Person does not have permission to change RFQ assignments.",
+			});
+		}
+
 		const allowed = [
 			"status",
 			"assignedTo",
@@ -2278,6 +2342,47 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 				author: authorName,
 			},
 		});
+
+		// Trigger Email Notification to Sales Responsibility when a follow-up is logged
+		try {
+			const salesAssignee = existing.salesResponsibility || existing.assignedTo;
+			let salesEmail = "";
+			if (salesAssignee) {
+				if (salesAssignee.includes("@")) {
+					salesEmail = salesAssignee;
+				} else {
+					const salesUser: any = await User.findOne({
+						name: { $regex: new RegExp(`^${salesAssignee.trim()}$`, "i") },
+					}).lean();
+					const legacyAssignee: any = await AssigneeEmail.findOne({
+						name: { $regex: new RegExp(`^${salesAssignee.trim()}$`, "i") },
+					}).lean();
+					salesEmail = salesUser?.email || legacyAssignee?.email || "";
+				}
+			}
+
+			if (salesEmail && salesEmail.toLowerCase() !== authorEmail.toLowerCase()) {
+				sendTechnicalFollowupAddedEmail({
+					toSalesEmail: salesEmail,
+					salesPersonName: salesAssignee || "Sales Lead",
+					authorName: authorDisplay,
+					authorEmail: authorEmail,
+					type: type || "Followup",
+					note: note.trim(),
+					nextActionDate: nextActionDate || existing.nextActionDate || "",
+					enquiry: {
+						id: existing._id.toString(),
+						rfqId: existing.rfqId,
+						companyName: existing.companyName,
+						itemDescription: existing.itemDescription,
+					},
+				}).catch((err) =>
+					console.error("Error sending follow-up notification to sales:", err.message)
+				);
+			}
+		} catch (emailErr: any) {
+			console.warn("[addFollowup] Email notification dispatch error:", emailErr.message);
+		}
 
 		return res.json({
 			success: true,
@@ -2677,7 +2782,7 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 					file.mimetype || "application/octet-stream",
 					file.buffer,
 					kind,
-				).catch(() => {});
+				).catch(() => { });
 				attachedFiles.push({
 					id: att._id.toString(),
 					filename: att.filename,
@@ -3146,7 +3251,7 @@ export const syncInboxApi = async (
 					userEmail: triggeredBy,
 					action: "INBOX_SYNC",
 					details: stats,
-				}).catch(() => {});
+				}).catch(() => { });
 			} catch (bgErr: any) {
 				console.error(
 					"❌ [syncInboxApi Background Error]:",

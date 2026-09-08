@@ -3,7 +3,7 @@ import { IntegrationService } from '../services/integrationService';
 import { User } from '../models/User';
 import { Application } from '../models/Application';
 import { AuthenticatedRequest } from '../middleware/authMiddleware';
-import { canSeeFullRfqList } from './rfqController';
+import { canSeeFullRfqList, getUserRfqScopeWhere } from './rfqController';
 
 async function getAuthenticatedUserInfo(req: AuthenticatedRequest) {
   if (!req.user?.userId) return null;
@@ -21,15 +21,7 @@ export const getDashboardSummary = async (req: AuthenticatedRequest, res: Respon
   try {
     const userInfo = await getAuthenticatedUserInfo(req);
     const isFullAccess = canSeeFullRfqList(userInfo || req.user);
-
-    const userScopeWhere = !isFullAccess && userInfo ? {
-      $or: [
-        { assignedTo: userInfo.name },
-        { assignedTo: userInfo.email },
-        { salesResponsibility: userInfo.name },
-        { technical: userInfo.name },
-      ],
-    } : undefined;
+    const userScopeWhere = getUserRfqScopeWhere(userInfo || req.user);
 
     const [rfqMetrics, costingMetrics, employeeKPIs, monthlyTrends, activeUsersCount, totalAppsCount] = await Promise.all([
       IntegrationService.getRFQMetrics(userScopeWhere),
@@ -47,7 +39,9 @@ export const getDashboardSummary = async (req: AuthenticatedRequest, res: Respon
         userRole: userInfo?.roleName || req.user?.role || 'USER',
         summaryCards: {
           totalRFQs: rfqMetrics.totalRFQs,
+          totalLiveRFQs: rfqMetrics.totalLiveRFQs,
           totalOffersGenerated: costingMetrics.totalOffersGenerated,
+          offersSentRFQs: rfqMetrics.offersSentRFQs,
           pendingRFQs: rfqMetrics.pendingRFQs,
           pendingOffers: costingMetrics.pendingOffers,
           approvedRFQs: rfqMetrics.approvedRFQs,
