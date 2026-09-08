@@ -1,5 +1,15 @@
 import mongoose, { Schema, Document } from 'mongoose';
 
+export interface IFollowup {
+  _id?: string;
+  type: string;
+  note: string;
+  author?: string;
+  authorEmail?: string;
+  createdAt?: string;
+  nextActionDate?: string;
+}
+
 export interface IEnquiry extends Document {
   rfqId: string;
   dateReceived: string;
@@ -19,6 +29,7 @@ export interface IEnquiry extends Document {
   remarks: string;
   pendingRemarks: string;
   followupRemarks: string;
+  followups: IFollowup[];
   nextActionDate: string;
   lastCallDate: string;
   proposedOfferDate: string;
@@ -62,6 +73,19 @@ const EnquirySchema = new Schema<IEnquiry>(
     remarks: { type: String, default: '' },
     pendingRemarks: { type: String, default: '' },
     followupRemarks: { type: String, default: '' },
+    followups: {
+      type: [
+        {
+          type: { type: String, default: 'Followup' },
+          note: { type: String, default: '' },
+          author: { type: String, default: '' },
+          authorEmail: { type: String, default: '' },
+          createdAt: { type: String, default: '' },
+          nextActionDate: { type: String, default: '' },
+        },
+      ],
+      default: [],
+    },
     nextActionDate: { type: String, default: '' },
     lastCallDate: { type: String, default: '' },
     proposedOfferDate: { type: String, default: '' },

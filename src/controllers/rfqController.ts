@@ -2155,8 +2155,23 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 		}
 		existing.followups.push(followupEntry);
 
+		const authorDisplay = authorName.replace(/\s*\([^)]*\)/, "").trim() || "Team Member";
+		const dateFormatted = new Date().toLocaleDateString("en-US", {
+			month: "short",
+			day: "numeric",
+			year: "numeric",
+			hour: "2-digit",
+			minute: "2-digit",
+		});
+		const headerStr = `[${(type || "Followup").toUpperCase()} - ${authorDisplay} - ${dateFormatted}]`;
+		const newNoteText = `${headerStr}\n${note.trim()}`;
+
 		existing.remarks = note.trim();
-		existing.followupRemarks = note.trim();
+		const currentFollowupStr = (existing.followupRemarks || "").trim();
+		existing.followupRemarks = currentFollowupStr
+			? `${newNoteText}\n\n${currentFollowupStr}`
+			: newNoteText;
+
 		if (nextActionDate) existing.nextActionDate = nextActionDate;
 		if (lastCallDate || type === "Call")
 			existing.lastCallDate = lastCallDate || getTodayIso();
@@ -2179,7 +2194,16 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 		return res.json({
 			success: true,
 			message: "Follow-up recorded successfully",
-			data: { ...existing.toObject(), id: existing._id.toString() },
+			data: {
+				id: existing._id.toString(),
+				rfqId: existing.rfqId,
+				followup: followupEntry,
+				followups: existing.followups,
+				remarks: existing.remarks,
+				followupRemarks: existing.followupRemarks,
+				nextActionDate: existing.nextActionDate,
+				lastCallDate: existing.lastCallDate,
+			},
 		});
 	} catch (error: any) {
 		return res.status(500).json({ success: false, message: error.message });
