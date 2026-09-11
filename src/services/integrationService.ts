@@ -1,6 +1,18 @@
 import { Enquiry } from '../models/Enquiry';
 import { User } from '../models/User';
 
+export interface FollowupDueRFQ {
+  id: string;
+  rfqNumber: string;
+  clientName: string;
+  contactPerson: string;
+  assignedTo: string;
+  status: string;
+  nextActionDate: string;
+  daysOverdue: number;
+  itemDescription: string;
+}
+
 export interface RFQSummary {
   totalRFQs: number;
   totalLiveRFQs: number;
@@ -253,6 +265,50 @@ export class IntegrationService {
         approved: data.approved,
         revenue: data.approved * 1500000,
       }));
+    } catch (error) {
+      return [];
+    }
+  }
+
+  public static async getFollowupDueRFQs(userScopeWhere?: any): Promise<FollowupDueRFQ[]> {
+    try {
+      const CLOSED_SET = new Set(['closed', 'regret', 'po received']);
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+
+      const where = userScopeWhere || {};
+      const enquiries: any[] = await Enquiry.find(where)
+        .sort({ nextActionDate: 1 })
+        .select('rfqId companyName contactPerson assignedTo status nextActionDate itemDescription dateReceived')
+        .lean();
+
+      const due = enquiries.filter((e) => {
+        const statusLower = (e.status || '').toLowerCase();
+        if (CLOSED_SET.has(statusLower)) return false;
+        if (!e.nextActionDate) return false;
+        const actionDate = new Date(e.nextActionDate);
+        if (isNaN(actionDate.getTime())) return false;
+        actionDate.setHours(0, 0, 0, 0);
+        return actionDate <= today;
+      });
+
+      return due.map((e) => {
+        const actionDate = new Date(e.nextActionDate);
+        actionDate.setHours(0, 0, 0, 0);
+        const diffMs = today.getTime() - actionDate.getTime();
+        const daysOverdue = Math.floor(diffMs / (1000 * 60 * 60 * 24));
+        return {
+          id: e._id.toString(),
+          rfqNumber: e.rfqId || `ENC/RFQ/#${e._id}`,
+          clientName: e.companyName || 'Unnamed Customer',
+          contactPerson: e.contactPerson || '',
+          assignedTo: e.assignedTo || 'Unassigned',
+          status: e.status || 'Open',
+          nextActionDate: e.nextActionDate,
+          daysOverdue,
+          itemDescription: e.itemDescription || '',
+        };
+      });
     } catch (error) {
       return [];
     }

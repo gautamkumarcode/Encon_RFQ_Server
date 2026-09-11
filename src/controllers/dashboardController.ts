@@ -23,13 +23,14 @@ export const getDashboardSummary = async (req: AuthenticatedRequest, res: Respon
     const isFullAccess = canSeeFullRfqList(userInfo || req.user);
     const userScopeWhere = getUserRfqScopeWhere(userInfo || req.user);
 
-    const [rfqMetrics, costingMetrics, employeeKPIs, monthlyTrends, activeUsersCount, totalAppsCount] = await Promise.all([
+    const [rfqMetrics, costingMetrics, employeeKPIs, monthlyTrends, activeUsersCount, totalAppsCount, followupDueRFQs] = await Promise.all([
       IntegrationService.getRFQMetrics(userScopeWhere),
       IntegrationService.getCostingMetrics(userScopeWhere),
       IntegrationService.getEmployeeKPIs(userScopeWhere, !isFullAccess ? userInfo?.name : undefined),
       IntegrationService.getMonthlyTrends(userScopeWhere),
       User.countDocuments({ status: 'ACTIVE' }),
       Application.countDocuments(),
+      IntegrationService.getFollowupDueRFQs(userScopeWhere),
     ]);
 
     return res.json({
@@ -55,6 +56,7 @@ export const getDashboardSummary = async (req: AuthenticatedRequest, res: Respon
         recentOffers: costingMetrics.recentOffers,
         topEmployees: employeeKPIs.slice(0, 4),
         monthlyTrends,
+        followupDueRFQs,
       },
     });
   } catch (error: any) {
@@ -81,6 +83,18 @@ export const getEmployeeAnalytics = async (req: AuthenticatedRequest, res: Respo
       success: true,
       data: employeeKPIs,
     });
+  } catch (error: any) {
+    return res.status(500).json({ success: false, message: error.message });
+  }
+};
+
+export const getFollowupDueList = async (req: AuthenticatedRequest, res: Response) => {
+  try {
+    const userInfo = await getAuthenticatedUserInfo(req);
+    const isFullAccess = canSeeFullRfqList(userInfo || req.user);
+    const userScopeWhere = getUserRfqScopeWhere(userInfo || req.user);
+    const followupDueRFQs = await IntegrationService.getFollowupDueRFQs(!isFullAccess ? userScopeWhere : undefined);
+    return res.json({ success: true, data: followupDueRFQs });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
