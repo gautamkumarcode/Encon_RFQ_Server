@@ -12,7 +12,7 @@ import dashboardRoutes from './routes/dashboardRoutes';
 import activityRoutes from './routes/activityRoutes';
 import notificationRoutes from './routes/notificationRoutes';
 import rfqRoutes from './routes/rfqRoutes';
-import costingRoutes from './routes/costingRoutes';
+import pricingRoutes from './modules/pricing/pricing.routes';
 
 import { InboxService } from './services/inboxService';
 import { RfqNotificationService } from './services/rfqNotificationService';
@@ -95,7 +95,7 @@ app.use('/api/dashboard', dashboardRoutes);
 app.use('/api/activity', activityRoutes);
 app.use('/api/notifications', notificationRoutes);
 app.use('/api/rfq', rfqRoutes);
-app.use('/api/costing', costingRoutes);
+app.use('/api/pricing', pricingRoutes);
 
 
 // Global Error Handler

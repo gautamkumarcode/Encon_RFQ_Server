@@ -11,7 +11,14 @@
     "seed": "ts-node src/scripts/seed.ts",
     "reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
     "clear-rfq-data": "ts-node src/utils/clearRfqData.ts",
-    "sync-matched-rfqs": "node scripts/sync_matched_rfqs.js"
+    "sync-matched-rfqs": "node scripts/sync_matched_rfqs.js",
+    "migrate-pricing": "ts-node src/scripts/migratePricing.ts",
+    "migrate-pricing-phase2": "ts-node src/scripts/migratePricingPhase2.ts",
+    "migrate-pricing-phase3": "ts-node src/scripts/migratePricingPhase3.ts",
+    "fix-phase2-dup-refs": "ts-node src/scripts/fixPhase2DupRefs.ts",
+    "set-assembly-type": "ts-node src/scripts/setAssemblyType.ts",
+    "spotcheck-phase2": "ts-node src/scripts/spotcheckPhase2.ts",
+    "validate-pricing": "ts-node src/scripts/validatePricing.ts"
   },
   "dependencies": {
     "@prisma/client": "^5.10.0",

@@ -1,0 +1,1949 @@
+{
+ "generatedAt": "2026-09-21",
+ "source": "vlph.db burner_pricelist_master (BURNER SET component breakdown)",
+ "counts": {
+  "equipments": 28
+ },
+ "equipments": [
+  {
+   "name": "Film Burner ENCON 2A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 2A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 2A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Film Burner ENCON 3A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 3A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 3A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Film Burner ENCON 4A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 4A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 4A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 16850.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7452.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 8000.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Film Burner ENCON 5A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 5A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 5A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 15070.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Film Burner ENCON 6A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 6A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 6A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 15070.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Film Burner ENCON 7A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Film Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'FILM' BURNER & ACCESSORIES|size=ENCON 7A"
+   },
+   "link": {
+    "exactNames": [
+     "Film Burner ENCON 7A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 92212.3
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 18600.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4600.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 10609.7
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 2A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 2A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 2A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3144.96
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 3A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 3A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 3A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3144.96
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 4A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 4A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 4A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 16850.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4748.64
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7452.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 8000.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 5A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 5A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 5A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5441.28
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 15070.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 6A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 6A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 6A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 15070.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Gas Burner ENCON 7A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON 'GAS' BURNER & ACCESSORIES|size=ENCON 7A"
+   },
+   "link": {
+    "exactNames": [
+     "Gas Burner ENCON 7A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 92212.3
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 18600.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4600.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 10609.7
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 2A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 2A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 2A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 22000.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5635.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3144.96
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 3A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 3A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 3A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 22250.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5418.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5635.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3144.96
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 4A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 4A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 4A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 27068.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7452.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 8000.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5635.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4748.64
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 5A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 5A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 5A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 47600.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 11850.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5820.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5441.28
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 6A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 6A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 6A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 47800.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 11850.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5820.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "Dual Fuel Burner ENCON 7A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "Dual Fuel Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE FOR VARIOUS SIZES OF ENCON DUAL FUEL BURNER & ACCESSORIES|size=ENCON 7A"
+   },
+   "link": {
+    "exactNames": [
+     "Dual Fuel Burner ENCON 7A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 144212.3
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "M/C",
+      "name": "C.I.BURNER PLATE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9000.0
+     },
+     {
+      "type": "M/C",
+      "name": "HIGH AL. WHYTEHEAT K BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 18600.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 6900.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 10609.7
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Gas Burner ENCON HV-3A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY GAS BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY GAS BURNERS|size=ENCON HV-3A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Gas Burner ENCON HV-3A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 52800.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3144.96
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Gas Burner ENCON HV-4A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY GAS BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY GAS BURNERS|size=ENCON HV-4A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Gas Burner ENCON HV-4A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 16850.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 70800.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4748.64
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3760.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Gas Burner ENCON HV-5A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY GAS BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY GAS BURNERS|size=ENCON HV-5A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Gas Burner ENCON HV-5A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 85800.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5441.28
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Gas Burner ENCON HV-6A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY GAS BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY GAS BURNERS|size=ENCON HV-6A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Gas Burner ENCON HV-6A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 193200.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 3880.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Gas Burner ENCON HV-7A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Gas Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY GAS BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY GAS BURNERS|size=ENCON HV-7A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Gas Burner ENCON HV-7A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 92212.3
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 241560.0
+     },
+     {
+      "type": "Buy",
+      "name": "BALL VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 9544.08
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4600.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 10609.7
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Oil Burner ENCON HV-3A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Oil Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY OIL BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY OIL BURNERS|size=ENCON HV-3A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Oil Burner ENCON HV-3A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 14500.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 52800.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7520.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 4452.3
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Oil Burner ENCON HV-4A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Oil Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY OIL BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY OIL BURNERS|size=ENCON HV-4A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Oil Burner ENCON HV-4A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 16850.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 70800.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7520.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Oil Burner ENCON HV-5A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Oil Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY OIL BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY OIL BURNERS|size=ENCON HV-5A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Oil Burner ENCON HV-5A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 85800.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5200.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7520.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Oil Burner ENCON HV-6A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Oil Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY OIL BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY OIL BURNERS|size=ENCON HV-6A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Oil Burner ENCON HV-6A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 30600.0
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 193200.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7640.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 7306.6
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  },
+  {
+   "name": "HV Oil Burner ENCON HV-7A — BURNER SET",
+   "itemType": "ASSEMBLY",
+   "categoryName": "HV Oil Burner Pricelist",
+   "unitName": "Nos",
+   "supplierName": "ENCON",
+   "specifications": "PRICE LIST FOR HIGH VELOCITY OIL BURNERS",
+   "legacy": {
+    "source": "vlph.db/burner_pricelist_master/set",
+    "value": "section=PRICE LIST FOR HIGH VELOCITY OIL BURNERS|size=ENCON HV-7A"
+   },
+   "link": {
+    "exactNames": [
+     "HV Oil Burner ENCON HV-7A — BURNER SET"
+    ]
+   },
+   "price": null,
+   "cost": {
+    "components": [
+     {
+      "type": "M/C",
+      "name": "BURNER ALONE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 92212.3
+     },
+     {
+      "type": "M/C",
+      "name": "BURNER BLOCK",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 241560.0
+     },
+     {
+      "type": "Buy",
+      "name": "MICRO VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 5400.0
+     },
+     {
+      "type": "Buy",
+      "name": "FLEXIBLE HOSES SET",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 8600.0
+     },
+     {
+      "type": "Buy",
+      "name": "Y TYPE STRAINER",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 1050.0
+     },
+     {
+      "type": "Buy",
+      "name": "BUTTERFLY VALVE",
+      "quantity": 1,
+      "unit": "Nos",
+      "rate": 10609.7
+     }
+    ],
+    "effectiveFrom": "2026-09-21",
+    "notes": "Legacy burner-set component price list"
+   }
+  }
+ ],
+ "notes": []
+}
