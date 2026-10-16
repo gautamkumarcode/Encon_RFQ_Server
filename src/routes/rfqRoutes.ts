@@ -9,6 +9,7 @@ import {
 	createEnquiry,
 	deleteAttachment,
 	deleteEnquiry,
+	deleteFollowup,
 	getAnalyticsDashboard,
 	getAttachmentFile,
 	getAutomationUrlApi,
@@ -80,7 +81,11 @@ router.post(
 // a hand-off. Uses the automation service token — no user JWT needed.
 router.get("/service/enquiry/:id", checkAutomationToken, getEnquiryServiceApi);
 // Service API: Offer Generator fetches the full enquiry list for its RFQ dropdown.
-router.get("/service/enquiries", checkAutomationToken, getEnquiryListServiceApi);
+router.get(
+	"/service/enquiries",
+	checkAutomationToken,
+	getEnquiryListServiceApi,
+);
 
 // Public Attachment File Viewer / Downloader Route (Allows direct browser <img src> & tab downloads)
 router.get("/attachments/:attachmentId", getAttachmentFile);
@@ -107,6 +112,7 @@ router.post("/:id/sync-drive", syncDriveFolderApi);
 router.put("/:id", updateEnquiry);
 router.patch("/:id/inline", inlineUpdateField);
 router.post("/:id/followup", addFollowup);
+router.delete("/:id/followup/:followupId", deleteFollowup);
 router.post("/:id/client-followup", sendClientFollowupEmailApi);
 router.post("/:id/send-review", sendForReview);
 router.post("/:id/verify-review", verifyReview);

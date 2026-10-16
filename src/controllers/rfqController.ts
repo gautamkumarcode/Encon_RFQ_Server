@@ -9,9 +9,15 @@ import { AssigneeEmail, RfqCounter } from "../models/AssigneeEmail";
 import { Attachment } from "../models/Attachment";
 import { Enquiry } from "../models/Enquiry";
 import { Notification } from "../models/Notification";
-import { User } from "../models/User";
 import { RolePermission } from "../models/Permission";
-import { sendAssignmentEmail, sendCostingApprovedEmail, sendClientPostOfferFollowupEmail, sendRfqReviewRequiredEmail, sendTechnicalFollowupAddedEmail } from "../services/emailService";
+import { User } from "../models/User";
+import {
+	sendAssignmentEmail,
+	sendClientPostOfferFollowupEmail,
+	sendCostingApprovedEmail,
+	sendRfqReviewRequiredEmail,
+	sendTechnicalFollowupAddedEmail,
+} from "../services/emailService";
 import {
 	ensureEnquiryDriveFolder,
 	mirrorAttachmentToDrive,
@@ -78,7 +84,7 @@ function extractTextFromDocx(buffer: Buffer): string {
 								" " +
 								matches.map((t) => t.replace(/<[^>]+>/g, "").trim()).join(" ");
 						}
-					} catch (e) { }
+					} catch (e) {}
 				}
 				offset += 30 + nameLen + extraLen + compSize;
 			} else {
@@ -101,7 +107,7 @@ export const extractOfferDetailsFromDoc = async (
 	try {
 		if (lowerFn.endsWith(".pdf") || !lowerFn.includes(".")) {
 			if (typeof (globalThis as any).DOMMatrix === "undefined") {
-				(globalThis as any).DOMMatrix = class DOMMatrix { };
+				(globalThis as any).DOMMatrix = class DOMMatrix {};
 			}
 			const pdfParseFunc =
 				typeof pdfParse === "function" ? pdfParse : require("pdf-parse");
@@ -327,10 +333,7 @@ const CLOSED_STATUSES = new Set([
 ]);
 const STANDARD_TAT_DAYS = 30;
 
-const FULL_ACCESS_ROLES = new Set([
-	"ADMIN",
-	"SALES_MARKETING",
-]);
+const FULL_ACCESS_ROLES = new Set(["ADMIN", "SALES_MARKETING"]);
 const CAN_REVIEW_ROLES = new Set(["ADMIN", "CO", "GM", "PRODUCTION_HEAD"]);
 const CAN_EDIT_ROLES = new Set([
 	"ADMIN",
@@ -346,12 +349,9 @@ const CAN_EDIT_ROLES = new Set([
 
 export function canSeeFullRfqList(user?: any): boolean {
 	if (!user) return true;
-	const roleName = (
-		user.roleName ||
-		user.role?.name ||
-		user.role ||
-		""
-	).toUpperCase().trim();
+	const roleName = (user.roleName || user.role?.name || user.role || "")
+		.toUpperCase()
+		.trim();
 
 	// ONLY Super Admin / Admin and Sales & Marketing have full access to all RFQs
 	if (
@@ -378,7 +378,8 @@ export function canReviewRfq(user?: any): boolean {
 		""
 	).toUpperCase();
 
-	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM")
+		return true;
 
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
@@ -419,7 +420,8 @@ export function canFinalApproveRfq(user?: any): boolean {
 		user.role ||
 		""
 	).toUpperCase();
-	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM")
+		return true;
 
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
@@ -445,7 +447,8 @@ export function canEditRfq(user?: any): boolean {
 		""
 	).toUpperCase();
 
-	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM")
+		return true;
 
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
@@ -536,7 +539,9 @@ export function getUserRfqScopeWhere(userInfo?: any): any {
 		userInfo.role?.name ||
 		userInfo.role ||
 		""
-	).toUpperCase().trim();
+	)
+		.toUpperCase()
+		.trim();
 
 	const isReviewerRole =
 		roleName === "CO" ||
@@ -553,7 +558,9 @@ export function getUserRfqScopeWhere(userInfo?: any): any {
 		});
 	}
 
-	return assigneeOrConditions.length > 0 ? { $or: assigneeOrConditions } : { _id: null };
+	return assigneeOrConditions.length > 0
+		? { $or: assigneeOrConditions }
+		: { _id: null };
 }
 
 export function isAdmin(user: any): boolean {
@@ -565,7 +572,8 @@ export function isAdmin(user: any): boolean {
 		""
 	).toUpperCase();
 
-	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM") return true;
+	if (roleName === "ADMIN" || roleName === "CO" || roleName === "GM")
+		return true;
 
 	if (Array.isArray(user.permissions)) {
 		const perms = user.permissions;
@@ -778,6 +786,34 @@ export const getEnquiries = async (
 		if (assignedTo && assignedTo !== "all" && assignedTo !== "All") {
 			if (assignedTo === "Unassigned") {
 				where.assignedTo = "";
+			} else if (mongoose.Types.ObjectId.isValid(String(assignedTo))) {
+				const selectedUser: any = await User.findById(assignedTo)
+					.select("name email")
+					.lean();
+				const legacyNames: any[] = selectedUser?.email
+					? await AssigneeEmail.find({ email: selectedUser.email })
+							.select("name")
+							.lean()
+					: [];
+				const assignmentNames = [
+					selectedUser?.name,
+					selectedUser?.email,
+					...legacyNames.map((entry) => entry.name),
+				].filter(Boolean);
+				where.$and = [
+					...(where.$and || []),
+					{
+						$or: [
+							{ assignedToId: assignedTo },
+							...assignmentNames.map((name) => ({
+								assignedTo: {
+									$regex: `^${String(name).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+									$options: "i",
+								},
+							})),
+						],
+					},
+				];
 			} else {
 				where.assignedTo = String(assignedTo);
 			}
@@ -835,7 +871,8 @@ export const getEnquiries = async (
 				e.tat,
 				e.status,
 			);
-			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
+			const isOverdue =
+				!isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
 			const cleanOfferNo = sanitizeOfferNo(e.offerNo, e.rfqId);
 
 			return {
@@ -1017,9 +1054,7 @@ export const getOfferMapping = async (
 			}
 		}
 
-		const all: any[] = await Enquiry.find(where)
-			.sort({ _id: -1 })
-			.lean();
+		const all: any[] = await Enquiry.find(where).sort({ _id: -1 }).lean();
 		const filtered: any[] = await Enquiry.find(where)
 			.select("rfqId offerNo offerDate companyName itemDescription status")
 			.sort({ _id: -1 })
@@ -1074,7 +1109,8 @@ export const getAnalyticsDashboard = async (
 				e.status,
 				e.assignedDate,
 			);
-			const isOverdue = !isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
+			const isOverdue =
+				!isClosed(e.status) && (daysOpen || 0) >= getTatValue(e.tat);
 			const followupDue = isFollowupDue(
 				e.assignedDate,
 				e.dateReceived,
@@ -1089,8 +1125,8 @@ export const getAnalyticsDashboard = async (
 		const avgOpenAge =
 			activeDaysOpen.length > 0
 				? Math.round(
-					activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
-				)
+						activeDaysOpen.reduce((a, b) => a + b, 0) / activeDaysOpen.length,
+					)
 				: 0;
 
 		const summary = {
@@ -1216,7 +1252,7 @@ export const getEnquiryById = async (
 			const isReviewable =
 				(canReviewRfq(userInfo) || canFinalApproveRfq(userInfo)) &&
 				/^(Under review|Pending Verification|Pending Approval|Submitted for Review|In Review|Review|Verified|Approved)$/i.test(
-					enquiry.status || ""
+					enquiry.status || "",
 				);
 
 			if (!isAssigned && !isReviewable) {
@@ -1304,6 +1340,7 @@ export const createEnquiry = async (
 ) => {
 	try {
 		const body = req.body;
+		await normalizeAssignmentFields(body);
 		let rfqId = (body.rfqId || "").trim();
 		if (!rfqId) {
 			rfqId = await generateNextRfqId();
@@ -1356,14 +1393,14 @@ export const createEnquiry = async (
 				enquiry,
 				enquiry.assignedTo,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 		if (enquiry.technical && enquiry.technical !== enquiry.assignedTo) {
 			createAssignmentNotification(
 				enquiry,
 				enquiry.technical,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 
 		const cleanData = {
@@ -1467,8 +1504,7 @@ export const updateEnquiry = async (
 		if (!canEditRfq(userInfo || req.user)) {
 			return res.status(403).json({
 				success: false,
-				message:
-					"Access Denied: You do not have permission to edit this RFQ.",
+				message: "Access Denied: You do not have permission to edit this RFQ.",
 			});
 		}
 
@@ -1481,10 +1517,14 @@ export const updateEnquiry = async (
 		}
 
 		const updateData: any = { ...body };
+		await normalizeAssignmentFields(updateData);
 		if (!canChangeAssignment(userInfo || req.user)) {
 			updateData.assignedTo = existing.assignedTo;
+			updateData.assignedToId = existing.assignedToId;
 			updateData.technical = existing.technical;
+			updateData.technicalId = existing.technicalId;
 			updateData.salesResponsibility = existing.salesResponsibility;
+			updateData.salesResponsibilityId = existing.salesResponsibilityId;
 		}
 
 		if (
@@ -1514,7 +1554,7 @@ export const updateEnquiry = async (
 				updated,
 				body.assignedTo,
 				req.user?.email || "User",
-			).catch(() => { });
+			).catch(() => {});
 		}
 
 		return res.json({
@@ -1572,7 +1612,11 @@ export const sendForReview = async (
 			});
 
 			if (reviewerEmails.size === 0) {
-				const smtpUser = (process.env.SMTP_USER || process.env.IMAP_USER || "").trim();
+				const smtpUser = (
+					process.env.SMTP_USER ||
+					process.env.IMAP_USER ||
+					""
+				).trim();
 				if (smtpUser && smtpUser.includes("@")) {
 					reviewerEmails.add(smtpUser);
 				}
@@ -1600,7 +1644,10 @@ export const sendForReview = async (
 				);
 			}
 		} catch (emailErr: any) {
-			console.warn("[sendForReview] Email notification trigger warning:", emailErr.message);
+			console.warn(
+				"[sendForReview] Email notification trigger warning:",
+				emailErr.message,
+			);
 		}
 
 		return res.json({
@@ -1888,12 +1935,12 @@ export const uploadAttachment = async (
 		const extracted: ExtractedOfferMetadata = isOfferDoc
 			? await extractOfferDetailsFromDoc(file.buffer, file.originalname)
 			: {
-				enquiryNo: "",
-				offerNo: "",
-				offerDate: "",
-				clientName: "",
-				projectName: "",
-			};
+					enquiryNo: "",
+					offerNo: "",
+					offerDate: "",
+					clientName: "",
+					projectName: "",
+				};
 
 		// 2. Intelligent RFQ Resolution by Enquiry No / Client Name
 		let targetEnquiryId = requestedId;
@@ -2033,7 +2080,7 @@ export const autoMapOfferDocApi = async (
 			file.mimetype,
 			file.buffer,
 			"offer",
-		).catch(() => { });
+		).catch(() => {});
 
 		return res.json({
 			success: true,
@@ -2128,16 +2175,21 @@ export const inlineUpdateField = async (
 		if (!canEditRfq(userInfo || req.user)) {
 			return res.status(403).json({
 				success: false,
-				message:
-					"Access Denied: You do not have permission to edit this RFQ.",
+				message: "Access Denied: You do not have permission to edit this RFQ.",
 			});
 		}
 
 		const { field, value } = req.body;
-		if ((field === "assignedTo" || field === "salesResponsibility" || field === "technical") && !canChangeAssignment(userInfo || req.user)) {
+		if (
+			(field === "assignedTo" ||
+				field === "salesResponsibility" ||
+				field === "technical") &&
+			!canChangeAssignment(userInfo || req.user)
+		) {
 			return res.status(403).json({
 				success: false,
-				message: "Access Denied: Technical Person does not have permission to change RFQ assignments.",
+				message:
+					"Access Denied: Technical Person does not have permission to change RFQ assignments.",
 			});
 		}
 
@@ -2175,6 +2227,9 @@ export const inlineUpdateField = async (
 		}
 
 		const updateData: any = { [field]: value || "" };
+		if (assignmentFields.some((item) => item.value === field)) {
+			await normalizeAssignmentFields(updateData);
+		}
 		if (field === "assignedTo" && value !== existing.assignedTo) {
 			updateData.assignedDate = value ? getTodayIso() : "";
 		}
@@ -2187,6 +2242,7 @@ export const inlineUpdateField = async (
 				field === "followupRemarks" ||
 				field === "pendingRemarks") &&
 			value &&
+			typeof value === "string" &&
 			value.trim()
 		) {
 			let authorName = req.user?.email || "User";
@@ -2399,7 +2455,10 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 				}
 			}
 
-			if (salesEmail && salesEmail.toLowerCase() !== authorEmail.toLowerCase()) {
+			if (
+				salesEmail &&
+				salesEmail.toLowerCase() !== authorEmail.toLowerCase()
+			) {
 				sendTechnicalFollowupAddedEmail({
 					toSalesEmail: salesEmail,
 					salesPersonName: salesAssignee || "Sales Lead",
@@ -2415,11 +2474,17 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 						itemDescription: existing.itemDescription,
 					},
 				}).catch((err) =>
-					console.error("Error sending follow-up notification to sales:", err.message)
+					console.error(
+						"Error sending follow-up notification to sales:",
+						err.message,
+					),
 				);
 			}
 		} catch (emailErr: any) {
-			console.warn("[addFollowup] Email notification dispatch error:", emailErr.message);
+			console.warn(
+				"[addFollowup] Email notification dispatch error:",
+				emailErr.message,
+			);
 		}
 
 		return res.json({
@@ -2429,6 +2494,79 @@ export const addFollowup = async (req: AuthenticatedRequest, res: Response) => {
 				id: existing._id.toString(),
 				rfqId: existing.rfqId,
 				followup: followupEntry,
+				followups: existing.followups,
+				remarks: existing.remarks,
+				followupRemarks: existing.followupRemarks,
+				nextActionDate: existing.nextActionDate,
+				lastCallDate: existing.lastCallDate,
+			},
+		});
+	} catch (error: any) {
+		return res.status(500).json({ success: false, message: error.message });
+	}
+};
+
+export const deleteFollowup = async (
+	req: AuthenticatedRequest,
+	res: Response,
+) => {
+	try {
+		const { id, followupId } = req.params;
+		if (!id || !followupId || !mongoose.Types.ObjectId.isValid(followupId)) {
+			return res
+				.status(400)
+				.json({ success: false, message: "Invalid follow-up ID" });
+		}
+
+		const existing: any = await Enquiry.findById(id);
+		if (!existing) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		const deletedFollowup = existing.followups?.find(
+			(followup: any) => followup._id?.toString() === followupId,
+		);
+		if (!deletedFollowup) {
+			return res
+				.status(404)
+				.json({ success: false, message: "Follow-up not found" });
+		}
+
+		existing.followups = existing.followups.filter(
+			(followup: any) => followup._id?.toString() !== followupId,
+		);
+
+		const historyEntries = String(existing.followupRemarks || "")
+			.split(/\n\n+/)
+			.filter(
+				(entry: string) =>
+					entry.trim() && !entry.includes(deletedFollowup.note),
+			);
+		existing.followupRemarks = historyEntries.join("\n\n");
+		const latestFollowup = existing.followups[existing.followups.length - 1];
+		existing.remarks = latestFollowup?.note || "";
+		if (!latestFollowup) existing.lastCallDate = "";
+
+		await existing.save();
+
+		await logActivity({
+			userId: req.user?.userId,
+			userEmail: req.user?.email || "User",
+			action: "RFQ_FOLLOWUP_DELETED",
+			details: {
+				enquiryId: id,
+				rfqId: existing.rfqId,
+				note: deletedFollowup.note,
+			},
+		});
+
+		return res.json({
+			success: true,
+			message: "Follow-up deleted successfully",
+			data: {
+				id: existing._id.toString(),
 				followups: existing.followups,
 				remarks: existing.remarks,
 				followupRemarks: existing.followupRemarks,
@@ -2820,7 +2958,7 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 					file.mimetype || "application/octet-stream",
 					file.buffer,
 					kind,
-				).catch(() => { });
+				).catch(() => {});
 				attachedFiles.push({
 					id: att._id.toString(),
 					filename: att.filename,
@@ -2923,6 +3061,43 @@ const resolveUserContactDetails = async (
 
 	return { email: "", mobile: "" };
 };
+
+const assignmentFields = [
+	{ value: "assignedTo", id: "assignedToId" },
+	{ value: "technical", id: "technicalId" },
+	{ value: "salesResponsibility", id: "salesResponsibilityId" },
+] as const;
+
+async function normalizeAssignmentFields(data: any) {
+	for (const field of assignmentFields) {
+		const userId = data[field.id];
+		const value = data[field.value];
+		let user: any = null;
+		if (!value) {
+			data[field.id] = null;
+			continue;
+		}
+
+		if (userId && mongoose.Types.ObjectId.isValid(String(userId))) {
+			user = await User.findById(userId).lean();
+		}
+		if (!user && value) {
+			const raw = String(value).trim();
+			const escaped = raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+			user = await User.findOne({
+				$or: [
+					{ email: raw.toLowerCase() },
+					{ name: new RegExp(`^${escaped}$`, "i") },
+				],
+			}).lean();
+		}
+
+		if (user) {
+			data[field.value] = user.name;
+			data[field.id] = user._id;
+		}
+	}
+}
 
 export const getAutomationUrlApi = async (
 	req: AuthenticatedRequest,
@@ -3057,7 +3232,9 @@ export const getEnquiryListServiceApi = async (
 ) => {
 	try {
 		const enquiries: any[] = await Enquiry.find({})
-			.select("rfqId companyName contactPerson email mobile salesResponsibility status itemDescription assignedTo createdAt")
+			.select(
+				"rfqId companyName contactPerson email mobile salesResponsibility status itemDescription assignedTo createdAt",
+			)
 			.sort({ _id: -1 })
 			.limit(500)
 			.lean();
@@ -3088,9 +3265,22 @@ export const getDirectory = async (
 		// 1. Fetch system users from DB (primary source of truth)
 		const systemUsers: any[] = await User.find({ status: "ACTIVE" })
 			.populate("roleId", "name")
-			.select("name email roleId")
-			.sort({ name: 1 })
+			.select("name email roleId updatedAt lastLoginAt")
+			.sort({ name: 1, updatedAt: -1, lastLoginAt: -1 })
 			.lean();
+
+		// Assignee selectors use real active User accounts only. Legacy directory
+		// records and names discovered from old enquiries are not selectable users.
+		return res.json({
+			success: true,
+			data: systemUsers.map((user) => ({
+				id: user._id.toString(),
+				name: user.name,
+				email: user.email,
+				role: user.roleId?.name || "",
+				aliases: [],
+			})),
+		});
 
 		// Fetch inactive/disabled users to exclude them from directory
 		const inactiveUsers: any[] = await User.find({ status: { $ne: "ACTIVE" } })
@@ -3112,7 +3302,14 @@ export const getDirectory = async (
 		// Map keyed by normalized email address to guarantee NO email duplicates
 		const emailMap = new Map<
 			string,
-			{ name: string; email: string; role: string; aliases: Set<string>; isUser: boolean }
+			{
+				id: string;
+				name: string;
+				email: string;
+				role: string;
+				aliases: Set<string>;
+				isUser: boolean;
+			}
 		>();
 
 		// Helper to index system users by email
@@ -3121,6 +3318,7 @@ export const getDirectory = async (
 				const emailKey = u.email.trim().toLowerCase();
 				const primaryName = u.name ? u.name.trim() : u.email.trim();
 				emailMap.set(emailKey, {
+					id: u._id.toString(),
 					name: primaryName,
 					email: u.email.trim(),
 					role: u.roleId?.name || "",
@@ -3159,6 +3357,7 @@ export const getDirectory = async (
 				} else {
 					// Add as new entry if email not present in system Users
 					emailMap.set(normEmail, {
+						id: "",
 						name: a.name.trim(),
 						email: a.email.trim(),
 						role: "",
@@ -3186,6 +3385,10 @@ export const getDirectory = async (
 		}
 
 		const unmappedNamesSet = new Set<string>();
+		const legacyAliasMigrations: {
+			oldName: string;
+			entry: { id: string; name: string };
+		}[] = [];
 
 		[...assignedToNames, ...salesNames, ...techNames].forEach((val) => {
 			if (!val) return;
@@ -3236,14 +3439,50 @@ export const getDirectory = async (
 						}
 					}
 
+					// A renamed user can leave a legacy short name behind (e.g. Gautam -> Gautam kumar).
+					// Only reconcile when exactly one active system user is a name-prefix match.
+					const prefixMatches = Array.from(emailMap.values()).filter(
+						(entry) =>
+							entry.id &&
+							(entry.name.toLowerCase().startsWith(normTrimmed) ||
+								normTrimmed.startsWith(entry.name.toLowerCase())),
+					);
+					if (prefixMatches.length === 1) {
+						const existing = prefixMatches[0];
+						existing.aliases.add(trimmed);
+						knownNamesMap.set(normTrimmed, existing.email.toLowerCase());
+						legacyAliasMigrations.push({ oldName: trimmed, entry: existing });
+						return;
+					}
+
 					// If it's a completely unmapped string without email
 					unmappedNamesSet.add(trimmed);
 				});
 		});
 
+		for (const migration of legacyAliasMigrations) {
+			for (const field of [
+				"assignedTo",
+				"technical",
+				"salesResponsibility",
+			] as const) {
+				await Enquiry.updateMany(
+					{ [field]: migration.oldName },
+					{
+						$set: {
+							[field]: migration.entry.name,
+							[`${field}Id`]: migration.entry.id,
+						},
+					},
+				);
+			}
+			await AssigneeEmail.deleteMany({ name: migration.oldName });
+		}
+
 		// 4. Construct final deduplicated list
 		const result = [
 			...Array.from(emailMap.values()).map((entry) => ({
+				id: entry.id,
 				name: entry.name,
 				email: entry.email,
 				role: entry.role,
@@ -3403,7 +3642,7 @@ export const syncInboxApi = async (
 					userEmail: triggeredBy,
 					action: "INBOX_SYNC",
 					details: stats,
-				}).catch(() => { });
+				}).catch(() => {});
 			} catch (bgErr: any) {
 				console.error(
 					"❌ [syncInboxApi Background Error]:",
