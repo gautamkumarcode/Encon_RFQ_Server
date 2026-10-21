@@ -7,3 +7,4 @@ export * from './Notification';
 export * from './Enquiry';
 export * from './Attachment';
 export * from './AssigneeEmail';
+export * from './TallyVoucher';

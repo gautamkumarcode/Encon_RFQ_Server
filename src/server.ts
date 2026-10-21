@@ -11,6 +11,7 @@ import dashboardRoutes from "./routes/dashboardRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import rfqRoutes from "./routes/rfqRoutes";
 import roleRoutes from "./routes/roleRoutes";
+import tallyRoutes from "./routes/tallyRoutes";
 import userRoutes from "./routes/userRoutes";
 
 import { InboxService } from "./services/inboxService";
@@ -107,6 +108,7 @@ app.use("/api/dashboard", dashboardRoutes);
 app.use("/api/activity", activityRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/rfq", rfqRoutes);
+app.use("/api/tally", tallyRoutes);
 
 // Global Error Handler
 app.use(
