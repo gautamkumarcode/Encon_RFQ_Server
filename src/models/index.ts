@@ -8,3 +8,5 @@ export * from './Enquiry';
 export * from './Attachment';
 export * from './AssigneeEmail';
 export * from './TallyVoucher';
+export * from './TallyBook';
+export * from './TallyBankTxn';
