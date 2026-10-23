@@ -11,12 +11,13 @@ import {
   importOrdersExcel,
   exportOrdersExcel,
 } from '../controllers/orderController';
-import { authenticateToken } from '../middleware/authMiddleware';
+import { authenticateToken, requireRoles, ORDER_CLIENT_ROLES } from '../middleware/authMiddleware';
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage() });
 
 router.use(authenticateToken);
+router.use(requireRoles(ORDER_CLIENT_ROLES));
 
 // Specific paths BEFORE the '/:id' param route so they aren't shadowed.
 router.get('/summary', ordersSummary);

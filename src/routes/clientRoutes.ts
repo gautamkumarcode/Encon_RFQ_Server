@@ -5,11 +5,12 @@ import {
   upsertClient,
   deleteClient,
 } from '../controllers/clientController';
-import { authenticateToken } from '../middleware/authMiddleware';
+import { authenticateToken, requireRoles, ORDER_CLIENT_ROLES } from '../middleware/authMiddleware';
 
 const router = Router();
 
 router.use(authenticateToken);
+router.use(requireRoles(ORDER_CLIENT_ROLES));
 
 router.get('/', listClients);
 router.get('/:id', getClientById);

@@ -7,6 +7,9 @@ export interface AuthenticatedRequest extends Request {
   user?: TokenPayload;
 }
 
+// Roles allowed to view/manage the Order in Hand book and the Clients master.
+export const ORDER_CLIENT_ROLES = ['ADMIN', 'CO'];
+
 export function authenticateToken(req: AuthenticatedRequest, res: Response, next: NextFunction) {
   const authHeader = req.headers['authorization'];
   let token = authHeader && authHeader.startsWith('Bearer ') ? authHeader.split(' ')[1] : null;
@@ -38,7 +41,10 @@ export function requireRoles(roles: string[]) {
       return res.status(401).json({ success: false, message: 'Authentication required' });
     }
 
-    if (!roles.includes(req.user.role)) {
+    // Compare case-insensitively so stored role names can't slip past the gate.
+    const userRole = String(req.user.role || '').toUpperCase();
+    const allowed = roles.map((r) => String(r).toUpperCase());
+    if (!allowed.includes(userRole)) {
       return res.status(403).json({
         success: false,
         message: `Forbidden: Requires one of the following roles: ${roles.join(', ')}`,
