@@ -1355,6 +1355,7 @@ export const createEnquiry = async (
 			receivedOn,
 			type: body.type || "Equipment",
 			companyName: body.companyName || "",
+			address: body.address || undefined,
 			contactPerson: body.contactPerson || "",
 			mobile: body.mobile || "",
 			email: body.email || "",

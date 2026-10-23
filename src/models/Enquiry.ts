@@ -10,12 +10,23 @@ export interface IFollowup {
 	nextActionDate?: string;
 }
 
+export interface IEnquiryAddress {
+	line1: string;
+	line2: string;
+	city: string;
+	state: string;
+	country: string;
+	pincode: string;
+}
+
 export interface IEnquiry extends Document {
 	rfqId: string;
 	dateReceived: string;
 	receivedOn: string;
 	type: string;
 	companyName: string;
+	client?: mongoose.Types.ObjectId | null;
+	address?: IEnquiryAddress;
 	contactPerson: string;
 	mobile: string;
 	email: string;
@@ -63,6 +74,19 @@ const EnquirySchema = new Schema<IEnquiry>(
 		receivedOn: { type: String, default: "" },
 		type: { type: String, default: "" },
 		companyName: { type: String, default: "", index: true },
+		client: {
+			type: Schema.Types.ObjectId,
+			ref: "Client",
+			default: null,
+		},
+		address: {
+			line1: { type: String, default: "" },
+			line2: { type: String, default: "" },
+			city: { type: String, default: "" },
+			state: { type: String, default: "" },
+			country: { type: String, default: "India" },
+			pincode: { type: String, default: "" },
+		},
 		contactPerson: { type: String, default: "" },
 		mobile: { type: String, default: "" },
 		email: { type: String, default: "" },

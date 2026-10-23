@@ -10,3 +10,5 @@ export * from './AssigneeEmail';
 export * from './TallyVoucher';
 export * from './TallyBook';
 export * from './TallyBankTxn';
+export * from './Client';
+export * from './OrderInHand';

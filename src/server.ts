@@ -7,8 +7,10 @@ import helmet from "helmet";
 import activityRoutes from "./routes/activityRoutes";
 import appRoutes from "./routes/appRoutes";
 import authRoutes from "./routes/authRoutes";
+import clientRoutes from "./routes/clientRoutes";
 import dashboardRoutes from "./routes/dashboardRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
+import orderRoutes from "./routes/orderRoutes";
 import rfqRoutes from "./routes/rfqRoutes";
 import roleRoutes from "./routes/roleRoutes";
 import tallyRoutes from "./routes/tallyRoutes";
@@ -109,6 +111,8 @@ app.use("/api/activity", activityRoutes);
 app.use("/api/notifications", notificationRoutes);
 app.use("/api/rfq", rfqRoutes);
 app.use("/api/tally", tallyRoutes);
+app.use("/api/clients", clientRoutes);
+app.use("/api/orders", orderRoutes);
 
 // Global Error Handler
 app.use(
