@@ -181,6 +181,20 @@ async function mapBody(body: any) {
     }
   }
 
+  // Derive the money fields here rather than relying on the model's pre-validate
+  // hook: updateOrder uses findByIdAndUpdate, which does NOT run document
+  // middleware, so without this the stored orderValue would go stale whenever a
+  // line item was edited (the balance would not move). orderValue is always the
+  // sum of the line items; for INR orders the INR total equals it, for foreign
+  // orders we keep the user-entered INR equivalent.
+  const cleanLineItems = Array.isArray(lineItems)
+    ? lineItems.map((li: any) => ({ description: li.description || '', qty: Number(li.qty) || 0, value: Number(li.value) || 0 }))
+    : [];
+  const lineSum = cleanLineItems.reduce((s: number, li: any) => s + (li.value || 0), 0);
+  const cur = (currency || 'INR').toUpperCase();
+  const orderValue = lineSum > 0 ? lineSum : (Number(body.orderValue) || 0);
+  const orderValueINRFinal = cur === 'INR' ? orderValue : (Number(orderValueINR) || 0);
+
   return {
     client: clientRef || null,
     clientName: resolvedName,
@@ -190,11 +204,10 @@ async function mapBody(body: any) {
     poNumber: poNumber || '',
     poDate: toDateOrNull(poDate),
     orderReceivedDate: toDateOrNull(orderReceivedDate),
-    lineItems: Array.isArray(lineItems)
-      ? lineItems.map((li: any) => ({ description: li.description || '', qty: Number(li.qty) || 0, value: Number(li.value) || 0 }))
-      : [],
+    lineItems: cleanLineItems,
     currency: currency || 'INR',
-    orderValueINR: Number(orderValueINR) || 0,
+    orderValue,
+    orderValueINR: orderValueINRFinal,
     termsOfPayment: termsOfPayment || '',
     advanceAmount: Number(advanceAmount) || 0,
     advanceReceivedDate: toDateOrNull(advanceReceivedDate),
@@ -424,7 +437,16 @@ export const importOrdersExcel = async (req: AuthenticatedRequest, res: Response
 
       if (!clientName && !poNumber) continue;
       const jobNo = cellStr(grp[0], C.job);
-      const orderValueINR = totalValue || lineItems.reduce((s, li) => s + li.value, 0);
+      // The register's authoritative figure is the TOTAL row. When it differs
+      // from the sum of the parsed item rows (e.g. the item row carries only the
+      // basic value while TOTAL includes GST/charges), trust the TOTAL and align
+      // a single line item to it — so the stored order value matches the sheet
+      // and stays consistent with the orderValue == sum(lineItems) invariant.
+      const lineSum = lineItems.reduce((s, li) => s + li.value, 0);
+      if (totalValue > 0 && totalValue !== lineSum && lineItems.length === 1) {
+        lineItems[0].value = totalValue;
+      }
+      const orderValueINR = totalValue || lineSum;
       const payload = {
         clientName,
         jobNo,
