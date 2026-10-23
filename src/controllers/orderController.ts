@@ -37,6 +37,8 @@ function serialize(o: any) {
     advanceReceivedDate: o.advanceReceivedDate,
     payments: o.payments || [],
     totalReceived: (o.payments || []).reduce((s: number, p: any) => s + (Number(p.amount) || 0), 0),
+    ldApplicable: !!o.ldApplicable,
+    ldPercentage: o.ldPercentage || 0,
     dispatchAsPerPo: o.dispatchAsPerPo,
     expectedDespatch: o.expectedDespatch,
     piNumber: o.piNumber,
@@ -153,7 +155,7 @@ async function mapBody(body: any) {
     clientName, clientId, enquiryId, jobNo, rfqId, poNumber, poDate, orderReceivedDate,
     lineItems, currency, orderValueINR, termsOfPayment, advanceAmount, advanceReceivedDate,
     dispatchAsPerPo, expectedDespatch, piNumber, piDate, status, currentStatusNote,
-    contactPerson, mobile, email, country, address, payments,
+    contactPerson, mobile, email, country, address, payments, ldApplicable, ldPercentage,
   } = body || {};
 
   // Persist the client details typed on the order into the master (back-fills gaps).
@@ -222,6 +224,9 @@ async function mapBody(body: any) {
           // Drop blank rows (no amount and no note) so the ledger stays clean.
           .filter((p: any) => p.amount > 0 || p.note.trim())
       : [],
+    ldApplicable: !!ldApplicable,
+    // Store a rate only when LD applies; a blank/zero stays 0.
+    ldPercentage: ldApplicable ? Number(ldPercentage) || 0 : 0,
     dispatchAsPerPo: toDateOrNull(dispatchAsPerPo),
     expectedDespatch: toDateOrNull(expectedDespatch),
     piNumber: piNumber || '',

@@ -43,6 +43,8 @@ export interface IOrderInHand extends Document {
   advanceAmount: number;
   advanceReceivedDate: Date | null;
   payments: IOrderPayment[];
+  ldApplicable: boolean;          // LD (late delivery) clause applies to this order
+  ldPercentage: number;           // LD rate (%) — meaningful only when ldApplicable
   dispatchAsPerPo: Date | null;
   expectedDespatch: Date | null;
   piNumber: string;
@@ -90,6 +92,8 @@ const OrderInHandSchema = new Schema<IOrderInHand>(
     advanceAmount:       { type: Number, default: 0 },
     advanceReceivedDate: { type: Date,   default: null },
     payments:            { type: [PaymentSchema], default: [] },
+    ldApplicable:        { type: Boolean, default: false },
+    ldPercentage:        { type: Number,  default: 0 },
     dispatchAsPerPo:     { type: Date,   default: null },
     expectedDespatch:    { type: Date,   default: null },
     piNumber:            { type: String, default: '', trim: true },
