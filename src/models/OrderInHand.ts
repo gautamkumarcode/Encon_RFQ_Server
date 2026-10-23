@@ -16,6 +16,16 @@ export interface IOrderLineItem {
   value: number;   // in the order currency
 }
 
+// A money-received entry against the order (advance, milestone, final, misc,
+// other). Amounts are in the order currency; the balance is orderValue minus
+// the sum of these receipts (computed, never stored, so it can't drift).
+export interface IOrderPayment {
+  type: string;
+  amount: number;
+  date: Date | null;
+  note: string;
+}
+
 export interface IOrderInHand extends Document {
   client: mongoose.Types.ObjectId | null;   // ref Client
   clientName: string;                        // snapshot for fast listing
@@ -32,6 +42,7 @@ export interface IOrderInHand extends Document {
   termsOfPayment: string;
   advanceAmount: number;
   advanceReceivedDate: Date | null;
+  payments: IOrderPayment[];
   dispatchAsPerPo: Date | null;
   expectedDespatch: Date | null;
   piNumber: string;
@@ -47,6 +58,16 @@ const LineItemSchema = new Schema<IOrderLineItem>(
     description: { type: String, default: '' },
     qty:         { type: Number, default: 0 },
     value:       { type: Number, default: 0 },
+  },
+  { _id: false }
+);
+
+const PaymentSchema = new Schema<IOrderPayment>(
+  {
+    type:   { type: String, default: 'Advance', trim: true },
+    amount: { type: Number, default: 0 },
+    date:   { type: Date,   default: null },
+    note:   { type: String, default: '' },
   },
   { _id: false }
 );
@@ -68,6 +89,7 @@ const OrderInHandSchema = new Schema<IOrderInHand>(
     termsOfPayment:      { type: String, default: '' },
     advanceAmount:       { type: Number, default: 0 },
     advanceReceivedDate: { type: Date,   default: null },
+    payments:            { type: [PaymentSchema], default: [] },
     dispatchAsPerPo:     { type: Date,   default: null },
     expectedDespatch:    { type: Date,   default: null },
     piNumber:            { type: String, default: '', trim: true },
