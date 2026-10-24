@@ -13,6 +13,7 @@
  * Idempotent: re-running produces the same end state.
  */
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { Role } from '../models/Role';
 import { Permission, RolePermission } from '../models/Permission';
@@ -38,6 +39,10 @@ export async function syncCapabilities() {
       REVOKE ? ' incl. revocations' : ''
     }`,
   );
+  // Name the target first: this script writes privilege grants, and MONGODB_URI can be
+  // repointed between runs. Host and database name only - never credentials.
+  const conn = mongoose.connection;
+  console.log(`🔌 Target database: ${conn.name} @ ${conn.host}:${conn.port}`);
 
   // 1. Every capability key -> a Permission row.
   // A null id means "this row does not exist yet" — in --dry it stays null, so it

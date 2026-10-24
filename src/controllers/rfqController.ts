@@ -19,6 +19,7 @@ import {
 	sendTechnicalFollowupAddedEmail,
 } from "../services/emailService";
 import {
+	downloadFileFromDrive,
 	ensureEnquiryDriveFolder,
 	mirrorAttachmentToDrive,
 } from "../services/gdriveService";
@@ -1976,9 +1977,19 @@ export const uploadAttachment = async (
 			file.mimetype,
 			file.buffer,
 			kind,
-		).catch((driveErr) => {
-			console.error("Google Drive attachment mirror error:", driveErr);
-		});
+		)
+			.then((res2) => {
+				// Bytes are safe in Drive now: keep a pointer, drop the Mongo copy.
+				if (res2?.success && res2.driveFileId) {
+					Attachment.findByIdAndUpdate(attachment._id, {
+						$set: { driveFileId: res2.driveFileId },
+						$unset: { data: "" },
+					}).catch(() => { });
+				}
+			})
+			.catch((driveErr) => {
+				console.error("Google Drive attachment mirror error:", driveErr);
+			});
 
 		// 4. Update Matched Enquiry details ONLY for offer document uploads
 		if (matchedEnquiry && isOfferDoc) {
@@ -2081,7 +2092,17 @@ export const autoMapOfferDocApi = async (
 			file.mimetype,
 			file.buffer,
 			"offer",
-		).catch(() => {});
+		)
+			.then((res2) => {
+				// Bytes are safe in Drive now: keep a pointer, drop the Mongo copy.
+				if (res2?.success && res2.driveFileId) {
+					Attachment.findByIdAndUpdate(attachment._id, {
+						$set: { driveFileId: res2.driveFileId },
+						$unset: { data: "" },
+					}).catch(() => { });
+				}
+			})
+			.catch(() => { });
 
 		return res.json({
 			success: true,
@@ -2140,7 +2161,7 @@ export const getAttachmentFile = async (
 				.json({ success: false, message: "Attachment not found" });
 		}
 
-		if (attachment.data && attachment.data.length > 0) {
+		const sendInline = (buf: Buffer) => {
 			res.setHeader(
 				"Content-Type",
 				attachment.contentType || "application/octet-stream",
@@ -2149,7 +2170,23 @@ export const getAttachmentFile = async (
 				"Content-Disposition",
 				`inline; filename="${attachment.filename}"`,
 			);
-			return res.send(attachment.data);
+			res.send(buf);
+		};
+
+		// Preferred: stream from Google Drive when the row only keeps a pointer.
+		if (attachment.driveFileId) {
+			const driveBuf = await downloadFileFromDrive(attachment.driveFileId);
+			if (driveBuf && driveBuf.length > 0) {
+				sendInline(driveBuf);
+				return;
+			}
+			// Drive fetch failed - fall through to any stored bytes below.
+		}
+
+		// Legacy / fallback: bytes still stored in MongoDB.
+		if (attachment.data && attachment.data.length > 0) {
+			sendInline(attachment.data);
+			return;
 		}
 
 		return res
@@ -2959,7 +2996,17 @@ export const automationCallbackApi = async (req: any, res: Response) => {
 					file.mimetype || "application/octet-stream",
 					file.buffer,
 					kind,
-				).catch(() => {});
+				)
+					.then((res2) => {
+						// Bytes are safe in Drive now: keep a pointer, drop the Mongo copy.
+						if (res2?.success && res2.driveFileId) {
+							Attachment.findByIdAndUpdate(att._id, {
+								$set: { driveFileId: res2.driveFileId },
+								$unset: { data: "" },
+							}).catch(() => { });
+						}
+					})
+					.catch(() => { });
 				attachedFiles.push({
 					id: att._id.toString(),
 					filename: att.filename,

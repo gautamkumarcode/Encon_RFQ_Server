@@ -8,9 +8,11 @@
  * Nothing here touches User records; re-running is safe and idempotent.
  */
 import dotenv from 'dotenv';
+import mongoose from 'mongoose';
 import { connectDB } from '../config/db';
 import { Role } from '../models/Role';
 import { Permission, RolePermission } from '../models/Permission';
+import { User } from '../models/User';
 import { CAPABILITIES, grantsByRole, capabilityKey } from '../config/capabilities';
 
 dotenv.config();
@@ -19,6 +21,11 @@ export async function seedDatabase() {
   console.log('🌱 Seeding RBAC roles, permissions and grants (no users, no applications)...');
 
   await connectDB();
+
+  // Name the target before anything is written, so a repointed MONGODB_URI cannot
+  // silently seed the wrong database. Host and database name only - never credentials.
+  const conn = mongoose.connection;
+  console.log(`🔌 Target database: ${conn.name} @ ${conn.host}:${conn.port}`);
 
   // 1. Roles
   const rolesData = [
@@ -77,7 +84,17 @@ export async function seedDatabase() {
     }
   }
   console.log('✅ Applied catalogue-driven role grants');
+
+  // Read-only reassurance for whoever runs this against a live database: prove no
+  // account was created or altered, and flag users whose roleId is empty (they would
+  // resolve to no capabilities and see an empty interface after login).
+  const userTotal = await User.countDocuments();
+  const usersWithoutRole = await User.countDocuments({ $or: [{ roleId: null }, { roleId: { $exists: false } }] });
   console.log('ℹ️  Users, applications and the assignee directory were left untouched.');
+  console.log(`ℹ️  Accounts in this database: ${userTotal} (${usersWithoutRole} without a role assignment).`);
+  if (usersWithoutRole > 0) {
+    console.log('   Those accounts need a role set on the Users page before the matrix applies to them.');
+  }
 }
 
 if (require.main === module) {

@@ -6,6 +6,7 @@ export interface IAttachment extends Document {
   contentType: string;
   size: number;
   objectKey: string;
+  driveFileId?: string;
   uploadedBy: string;
   kind: string;
   data?: Buffer | null;
@@ -18,6 +19,9 @@ const AttachmentSchema = new Schema<IAttachment>({
   contentType: { type: String, default: '' },
   size: { type: Number, default: 0 },
   objectKey: { type: String, default: '' },
+  // Google Drive file id. When present the bytes live in Drive and `data` is
+  // cleared, so Mongo only stores a pointer. Older rows may still carry `data`.
+  driveFileId: { type: String, default: '' },
   uploadedBy: { type: String, default: '' },
   kind: { type: String, default: '' },
   data: { type: Buffer, default: null },

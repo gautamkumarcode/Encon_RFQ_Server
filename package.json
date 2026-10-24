@@ -10,8 +10,10 @@
 		"dev": "npx ts-node-dev --respawn --transpile-only src/server.ts",
 		"seed": "ts-node src/scripts/seed.ts",
 		"rbac:sync": "ts-node src/scripts/rbacSync.ts",
+		"parser:check": "ts-node src/services/inboxParser.check.ts",
 		"reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
 		"clear-rfq-data": "ts-node src/utils/clearRfqData.ts",
+		"backfill-attachments": "ts-node src/utils/backfillAttachmentDrive.ts",
 		"sync-matched-rfqs": "node scripts/sync_matched_rfqs.js"
 	},
 	"dependencies": {

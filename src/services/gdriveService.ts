@@ -253,7 +253,7 @@ async function uploadFileToFolder(
     Buffer.from(footer, 'utf8'),
   ]);
 
-  await axios.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', multipartRequestBody, {
+  const resp = await axios.post('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', multipartRequestBody, {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       'Content-Type': `multipart/related; boundary=${boundary}`,
@@ -262,6 +262,10 @@ async function uploadFileToFolder(
     maxBodyLength: Infinity,
     maxContentLength: Infinity,
   });
+
+  // Return the created Drive file id so callers can store it as a pointer and
+  // stop keeping the bytes in MongoDB.
+  return resp?.data?.id ? String(resp.data.id) : '';
 }
 
 /**
@@ -356,7 +360,7 @@ export async function mirrorAttachmentToDrive(
   mimeType: string,
   buffer: Buffer,
   kind: string = ''
-): Promise<{ success: boolean; driveFolderUrl?: string }> {
+): Promise<{ success: boolean; driveFileId?: string; driveFolderUrl?: string }> {
   try {
     const accessToken = await getAccessToken();
     if (!accessToken) {
@@ -371,13 +375,80 @@ export async function mirrorAttachmentToDrive(
     const subfolder = await ensureFolder(subfolderName, rfqFolder.id, accessToken);
 
     // 4. Upload file buffer into subfolder
-    await uploadFileToFolder(subfolder.id, filename, mimeType, buffer, accessToken);
+    const driveFileId = await uploadFileToFolder(subfolder.id, filename, mimeType, buffer, accessToken);
 
     console.log(`✅ Mirrored file "${filename}" to Google Drive folder "${subfolderName}"`);
-    return { success: true, driveFolderUrl: rfqFolder.url };
+    return { success: true, driveFileId: driveFileId || undefined, driveFolderUrl: rfqFolder.url };
   } catch (err: any) {
     console.error('⚠️ Google Drive Mirror Error (non-blocking):', err.response?.data || err.message);
     return { success: false };
+  }
+}
+
+/**
+ * Download a file's bytes from Google Drive by its file id.
+ * Returns null when the token is unavailable or the file cannot be fetched,
+ * so callers can fall back to a locally stored copy.
+ */
+export async function downloadFileFromDrive(fileId: string): Promise<Buffer | null> {
+  if (!fileId) return null;
+  try {
+    const accessToken = await getAccessToken();
+    if (!accessToken) return null;
+
+    const resp = await axios.get(`https://www.googleapis.com/drive/v3/files/${fileId}`, {
+      headers: { Authorization: `Bearer ${accessToken}` },
+      params: { alt: 'media', supportsAllDrives: true },
+      responseType: 'arraybuffer',
+      maxBodyLength: Infinity,
+      maxContentLength: Infinity,
+    });
+
+    return Buffer.from(resp.data);
+  } catch (err: any) {
+    console.error('⚠️ Google Drive Download Error:', err.response?.status || err.message);
+    return null;
+  }
+}
+
+/**
+ * Find the Drive file id for an already-mirrored attachment, without uploading.
+ * Resolves the RFQ folder -> subfolder for the enquiry and matches by name.
+ * Returns '' when nothing matches, so callers can fall back to uploading.
+ */
+export async function resolveDriveFileId(
+  enquiryId: string,
+  filename: string,
+  kind: string = ''
+): Promise<string> {
+  try {
+    const accessToken = await getAccessToken();
+    if (!accessToken) return '';
+
+    const rfqFolder = await getOrEnsureRfqFolder(enquiryId, accessToken);
+    if (!rfqFolder.id) return '';
+
+    const subfolderName = getSubfolderName(kind, filename);
+    const subfolder = await ensureFolder(subfolderName, rfqFolder.id, accessToken);
+
+    const safeName = filename.replace(/'/g, "\\'");
+    const q = `name = '${safeName}' and '${subfolder.id}' in parents and trashed = false and mimeType != 'application/vnd.google-apps.folder'`;
+    const searchRes = await axios.get('https://www.googleapis.com/drive/v3/files', {
+      params: {
+        q,
+        fields: 'files(id)',
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+
+    const files = searchRes.data.files || [];
+    return files.length > 0 ? String(files[0].id) : '';
+  } catch (err: any) {
+    console.error('⚠️ Google Drive resolve error:', err.response?.status || err.message);
+    return '';
   }
 }
 

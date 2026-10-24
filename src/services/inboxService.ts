@@ -186,6 +186,23 @@ function extractPhone(text: string): string {
 	return "";
 }
 
+/**
+ * Re-decode a byte-preserving (latin1) string as UTF-8.
+ * Returns the input untouched when it is pure ASCII or when the bytes are not valid
+ * UTF-8, so a message in some other charset degrades to readable-if-imperfect text
+ * rather than to replacement characters.
+ */
+function decodeLatin1ToUtf8(text: string): string {
+	if (!text || !/[\u0080-\uFFFF]/.test(text)) return text;
+	try {
+		const converted = Buffer.from(text, "latin1").toString("utf8");
+		const replacements = (converted.match(/\uFFFD/g) || []).length;
+		return replacements > 2 ? text : converted;
+	} catch (e) {
+		return text;
+	}
+}
+
 export function decodeQuotedPrintable(input: string): string {
 	if (!input) return "";
 
@@ -382,6 +399,11 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 				decoded = decodeQuotedPrintable(bodyRaw);
 			} else if (transferEncoding === "base64") {
 				decoded = Buffer.from(bodyRaw, "base64").toString("utf8");
+			} else {
+				// 7bit / 8bit / binary arrive as raw bytes held in a latin1 string (the
+				// socket buffer is latin1 so IMAP literal lengths stay exact), so text
+				// parts need one latin1 -> utf8 pass or non-ASCII turns into mojibake.
+				decoded = decodeLatin1ToUtf8(bodyRaw);
 			}
 
 			if (partCt === "text/html") {
@@ -406,6 +428,9 @@ function extractMimePart(rawPart: string, depth = 0): MimeParsed {
 		decodedBody = decodeQuotedPrintable(targetText);
 	} else if (transferEncoding === "base64") {
 		decodedBody = Buffer.from(targetText, "base64").toString("utf8");
+	} else {
+		// Single-part 7bit/8bit message: same latin1 -> utf8 pass as the multipart path.
+		decodedBody = decodeLatin1ToUtf8(targetText);
 	}
 
 	if (ct === "text/html") result.html = decodedBody;
@@ -454,10 +479,9 @@ export function extractMimeWithAttachments(rawMime: string): {
 	if (!rawMime) return { body: "", attachments: [] };
 
 	try {
-		let text = rawMime
-			.replace(/^\*\s+\d+\s+FETCH\s+\(BODY\.PEEK\[\]\s+\{\d+\}\r?\n/i, "")
-			.replace(/\)\s+A\d+\s+OK.*$/gi, "")
-			.trim();
+		// Framing-aware: servers reply to BODY.PEEK[] with the item named BODY[], and
+		// may list FLAGS(...) before it, so a fixed "BODY.PEEK[]" pattern silently failed.
+		let text = stripImapFraming(rawMime);
 
 		const parsed = extractMimePart(text);
 
@@ -549,6 +573,118 @@ export function extractCleanEmailBody(rawMime: string): string {
 		);
 	if (!isRawMime) return cleanMimeRemnants(rawMime);
 	return extractMimeWithAttachments(rawMime).body;
+}
+
+// ---------------------------------------------------------------------------
+// IMAP response framing
+// ---------------------------------------------------------------------------
+
+/**
+ * A literal inside an untagged IMAP response: the server announces the payload with
+ * a marker at the END of a line - "* 183 FETCH (BODY[] {18345}" - then sends exactly
+ * that many bytes. Because the buffer is accumulated as latin1, one string char is
+ * one byte and the declared length can be trusted as an offset.
+ */
+interface ImapLiteral {
+	/** Item name the server used: BODY[], BODY.PEEK[], BODY[HEADER], RFC822... */
+	item: string;
+	/** Payload size in bytes as declared by the server. */
+	bytes: number;
+	/** Offset where the payload bytes begin. */
+	start: number;
+}
+
+const LITERAL_MARKER_RE = /\{(\d+)([+*])?\}[ \t]*\r?\n/g;
+const LITERAL_ITEM_RE =
+	/(BODY(?:\.PEEK)?(?:\[[^\]]*\])?|BINARY(?:\[[^\]]*\])?|RFC822(?:\.HEADER|\.TEXT)?)\s*$/i;
+
+function findImapLiterals(raw: string): ImapLiteral[] {
+	const found: ImapLiteral[] = [];
+	LITERAL_MARKER_RE.lastIndex = 0;
+	let match: RegExpExecArray | null;
+	while ((match = LITERAL_MARKER_RE.exec(raw)) !== null) {
+		// Only treat it as a literal when the text introducing it ends with a MIME
+		// item name. "{12}" appearing inside message content never does, so random
+		// braces in a body cannot be mistaken for protocol framing.
+		const lineStart = raw.lastIndexOf("\n", match.index) + 1;
+		const introducer = raw.substring(lineStart, match.index);
+		const itemMatch = LITERAL_ITEM_RE.exec(introducer);
+		if (!itemMatch) continue;
+		found.push({
+			item: itemMatch[1].toUpperCase(),
+			bytes: parseInt(match[1], 10),
+			start: match.index + match[0].length,
+		});
+	}
+	return found;
+}
+
+/**
+ * Pull the MIME source out of a raw FETCH response.
+ *
+ * The previous code matched only the literal string "BODY.PEEK[]", but servers answer
+ * that command with the item named "BODY[]" (Gmail, Outlook) and sometimes prefix other
+ * items first, e.g. "* 183 FETCH (FLAGS (\Seen) BODY[] {N}". When the match failed, the
+ * protocol line stayed glued to the front of the payload, the header block was never
+ * found, and the RFQ was saved with subject "(no subject)" and "* 183 FETCH (BODY[] {0"
+ * as its body. Reading the declared byte count instead of pattern-matching the name
+ * handles every variant, and tells us when the download was cut short.
+ */
+export function extractMimePayload(raw: string): {
+	mime: string;
+	complete: boolean;
+	declaredBytes: number;
+} {
+	if (!raw) return { mime: "", complete: false, declaredBytes: 0 };
+
+	const literals = findImapLiterals(raw);
+	if (literals.length === 0) return { mime: "", complete: false, declaredBytes: 0 };
+
+	// Widest literal wins: BODY[] holds the whole message, while a
+	// BODY[HEADER.FIELDS (...)] subset in the same response is smaller.
+	let best = literals[0];
+	for (const candidate of literals) {
+		if (candidate.bytes > best.bytes) best = candidate;
+	}
+
+	const available = raw.length - best.start;
+	const usable = Math.min(best.bytes, available);
+	let mime = raw.substring(best.start, best.start + usable);
+
+	// Defensive: if the declared length ran past the literal (some servers include the
+	// closing ")" in the span), drop the completion line that follows the payload.
+	const tail = mime.substring(Math.max(0, mime.length - 200));
+	const completionInTail = /\)\s*A\d+\s+(?:OK|NO|BAD)\b/i.exec(tail);
+	if (completionInTail) {
+		mime = mime.substring(0, mime.length - (tail.length - completionInTail.index));
+	}
+
+	return {
+		mime,
+		complete: usable >= best.bytes,
+		declaredBytes: best.bytes,
+	};
+}
+
+/**
+ * Remove IMAP framing from text that may already be stored in the database.
+ * Used by the parser as a last-line guard and by cleanDbEmailBodies to repair rows
+ * written before the fetch was fixed.
+ */
+export function stripImapFraming(raw: string): string {
+	if (!raw) return "";
+	let text = raw
+		// "* 183 FETCH (BODY[] {18345}" with any leading item list, e.g. FLAGS (...)
+		.replace(/^\*\s*\d+\s+FETCH\s*\([^{]*?\{\d+[+*]?\}[ \t]*\r?\n/i, "")
+		// "...)" + "A20 OK FETCH completed." trailing the payload
+		.replace(/\)\s*A\d+\s+(?:OK|NO|BAD)\b[\s\S]*$/i, "");
+	// A download cut off before the literal arrived leaves the framing line on its own.
+	// Drop it too, so no stored row can ever render "* 183 FETCH (BODY[] {0" as a body.
+	text = text
+		.replace(/^\s*\*\s*\d+\s+FETCH\b[^\r\n]*\r?\n?/i, "")
+		// a bare completion line, if the closing paren was already stripped
+		.replace(/^\s*A\d+\s+(?:OK|NO|BAD)\b[\s\S]*$/i, "");
+	return text.trim();
 }
 
 function decodeHeader(headerStr: string): string {
@@ -864,7 +1000,10 @@ export function isNoise(
 
 function parseMimeMessage(raw: string): ParsedEmail {
 	try {
-		const lines = raw.split(/\r?\n/);
+		// Defensive: callers now hand over clean MIME, but stored rows and the
+		// header-only path can still carry "* N FETCH (...) {N}" framing.
+		const source = stripImapFraming(raw);
+		const lines = source.split(/\r?\n/);
 		const headers: Record<string, string> = {};
 		let currentHeader = "";
 		let bodyStartIndex = lines.length;
@@ -913,7 +1052,7 @@ function parseMimeMessage(raw: string): ParsedEmail {
 		const inReplyTo = decodeHeader(headers["in-reply-to"] || "").trim();
 		const references = decodeHeader(headers["references"] || "").trim();
 
-		const { body, attachments } = extractMimeWithAttachments(raw);
+		const { body, attachments } = extractMimeWithAttachments(source);
 
 		return {
 			messageId,
@@ -944,7 +1083,13 @@ function parseMimeMessage(raw: string): ParsedEmail {
 
 class SimpleImapClient {
 	private client: tls.TLSSocket | null = null;
-	private buffer: string = "";
+	// Byte-safe response accumulation. latin1 keeps exactly one char per received
+	// byte, so IMAP "{N}" literal lengths can be validated against what actually
+	// arrived. Decoding each chunk as utf8 instead corrupts any multi-byte character
+	// that straddles a TLS chunk boundary - which is why fat messages with attachments
+	// broke while short plain-text ones parsed fine.
+	private buffer = "";
+	private bufferBytes = 0;
 	private tagIndex: number = 1;
 
 	constructor(
@@ -963,6 +1108,7 @@ class SimpleImapClient {
 			} catch (e) { }
 		}
 		this.buffer = "";
+		this.bufferBytes = 0;
 		return new Promise((resolve, reject) => {
 			let isResolved = false;
 			const timeout = setTimeout(() => {
@@ -986,8 +1132,9 @@ class SimpleImapClient {
 				},
 			);
 
-			this.client.on("data", (chunk) => {
-				this.buffer += chunk.toString("utf8");
+			this.client.on("data", (chunk: Buffer) => {
+				this.buffer += chunk.toString("latin1");
+				this.bufferBytes += chunk.length;
 			});
 
 			this.client.on("error", (err) => {
@@ -1013,6 +1160,7 @@ class SimpleImapClient {
 		const tag = `A${this.tagIndex++}`;
 		const fullCmd = `${tag} ${cmd}\r\n`;
 		this.buffer = "";
+		this.bufferBytes = 0;
 
 		return new Promise((resolve, reject) => {
 			if (!this.client || this.client.destroyed || !this.client.writable) {
@@ -1075,7 +1223,7 @@ class SimpleImapClient {
 					return;
 				}
 				// Safety Memory Guard: Abort single message fetch if raw payload exceeds 50MB
-				if (this.buffer.length > 50 * 1024 * 1024) {
+				if (this.bufferBytes > 50 * 1024 * 1024) {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
@@ -1084,16 +1232,15 @@ class SimpleImapClient {
 						this.client.removeListener("close", onClose);
 					}
 					this.buffer = "";
+					this.bufferBytes = 0;
 					return reject(
 						new Error("IMAP message payload exceeds max size limit (50MB)"),
 					);
 				}
 
-				const trimmedEnd = this.buffer.trimEnd();
-				const tailStr =
-					trimmedEnd.length > 1000
-						? trimmedEnd.substring(trimmedEnd.length - 1000)
-						: trimmedEnd;
+				// Only the tail can hold the tagged completion line. Testing the whole
+				// multi-megabyte buffer twice per 100ms tick was stalling large fetches.
+				const tailStr = this.buffer.substring(Math.max(0, this.buffer.length - 400)).trimEnd();
 
 				// Strictly match tagged completion line (e.g., "\r\nA1 OK ...") at the END of the response
 				const endStatusRegex = new RegExp(
@@ -1101,7 +1248,7 @@ class SimpleImapClient {
 					"i",
 				);
 
-				if (endStatusRegex.test(tailStr) || endStatusRegex.test(trimmedEnd)) {
+				if (endStatusRegex.test(tailStr)) {
 					isFinished = true;
 					clearTimeout(timer);
 					clearInterval(checkInterval);
@@ -1112,12 +1259,13 @@ class SimpleImapClient {
 
 					const response = this.buffer;
 					this.buffer = "";
+					this.bufferBytes = 0;
 
 					const tagOkEndRegex = new RegExp(
 						`(?:^|\\r?\\n)${tag}\\s+OK\\b[^\\r\\n]*$`,
 						"i",
 					);
-					if (tagOkEndRegex.test(tailStr) || tagOkEndRegex.test(trimmedEnd)) {
+					if (tagOkEndRegex.test(tailStr)) {
 						resolve(response);
 					} else {
 						reject(new Error(`IMAP Error: ${response.substring(0, 300)}`));
@@ -1125,6 +1273,34 @@ class SimpleImapClient {
 				}
 			}, 100);
 		});
+	}
+
+	/**
+	 * FETCH one message and return ONLY its MIME source - no "* 183 FETCH (BODY[] {N}"
+	 * framing, no "A20 OK FETCH completed" tail - and only when every declared byte
+	 * arrived. A truncated response throws so the caller re-fetches instead of storing
+	 * protocol text as an email body.
+	 */
+	public async fetchMimeMessage(
+		sequenceSpec: string,
+		timeoutMs = 90000,
+	): Promise<string> {
+		const raw = await this.sendCommand(
+			`FETCH ${sequenceSpec} (BODY.PEEK[])`,
+			timeoutMs,
+		);
+		const { mime, complete, declaredBytes } = extractMimePayload(raw);
+		if (!mime.trim()) {
+			throw new Error(
+				`IMAP FETCH returned no MIME literal for ${sequenceSpec} (server declared ${declaredBytes} bytes)`,
+			);
+		}
+		if (!complete) {
+			throw new Error(
+				`IMAP FETCH truncated for ${sequenceSpec}: got ${mime.length} of ${declaredBytes} bytes`,
+			);
+		}
+		return mime;
 	}
 
 	public close() {
@@ -1383,7 +1559,9 @@ export class InboxService {
 							const rawFetch = await imap.sendCommand(
 								`FETCH ${num} (BODY.PEEK[HEADER])`,
 							);
-							parsed = parseMimeMessage(rawFetch);
+							parsed = parseMimeMessage(
+								extractMimePayload(rawFetch).mime || rawFetch,
+							);
 							if (parsed) {
 								parsed.attachments = [];
 								const note = `[RFQ Email Received from ${parsed.fromEmail || parsed.fromName || "Email Sender"}]\nSubject: ${parsed.subject || "(no subject)"}\n\n⚠️ [System Note: Attachments were not auto-downloaded because the total email size (${sizeMb} MB) exceeded the ${maxMb} MB limit. You can manually upload attachment files to this RFQ.]`;
@@ -1400,15 +1578,31 @@ export class InboxService {
 							`[InboxService] Downloading message ${num} (${i + 1}/${uniqueNewNums.length}) [${messageSizeBytes ? (messageSizeBytes / 1024).toFixed(0) + "KB" : "size unknown"}]...`,
 						);
 
-						let rawFetch = "";
+						let mime: string;
 						try {
-							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`, 90000);
-						} catch (fetchErr) {
+							mime = await imap.fetchMimeMessage(num);
+						} catch (fetchErr: any) {
+							// A short read used to be stored as the email body verbatim, which is
+							// how "* 183 FETCH (BODY[] {0" reached the RFQ screen. Refuse it and
+							// re-fetch on a clean connection instead.
+							console.warn(
+								`⚠️ [InboxService] Message ${num} fetch incomplete (${fetchErr?.message}). Reconnecting and retrying once...`,
+							);
 							await imap.ensureConnected(user, password, mailbox);
-							rawFetch = await imap.sendCommand(`FETCH ${num} (BODY.PEEK[])`, 90000);
+							mime = await imap.fetchMimeMessage(num);
 						}
 
-						parsed = parseMimeMessage(rawFetch);
+						parsed = parseMimeMessage(mime);
+						if (
+							!parsed.body.trim() &&
+							!parsed.subject.trim() &&
+							!parsed.messageId
+						) {
+							console.warn(
+								`⚠️ [InboxService] Message ${num} parsed to an empty subject and body. Skipping instead of filing a blank RFQ.`,
+							);
+							parsed = null;
+						}
 					}
 
 					if (parsed) {
@@ -1607,7 +1801,7 @@ export class InboxService {
 
 					const relObjectKey = `enquiries/${existingTarget._id}/${att.filename}`;
 
-					await Attachment.create({
+					const createdAtt: any = await Attachment.create({
 						enquiryId: existingTarget._id,
 						filename: att.filename,
 						contentType: att.contentType,
@@ -1624,7 +1818,17 @@ export class InboxService {
 						att.contentType,
 						att.data,
 						"email",
-					).catch(() => { });
+					)
+						.then((res) => {
+							// Bytes are safe in Drive now: keep a pointer, drop the Mongo copy.
+							if (res?.success && res.driveFileId) {
+								Attachment.findByIdAndUpdate(createdAtt._id, {
+									$set: { driveFileId: res.driveFileId },
+									$unset: { data: "" },
+								}).catch(() => { });
+							}
+						})
+						.catch(() => { });
 				} catch (e) { }
 			}
 
@@ -1725,7 +1929,7 @@ export class InboxService {
 
 				const relObjectKey = `enquiries/${newEnquiry._id}/${att.filename}`;
 
-				await Attachment.create({
+				const createdAtt: any = await Attachment.create({
 					enquiryId: newEnquiry._id,
 					filename: att.filename,
 					contentType: att.contentType,
@@ -1742,7 +1946,17 @@ export class InboxService {
 					att.contentType,
 					att.data,
 					"email",
-				).catch(() => { });
+				)
+					.then((res) => {
+						// Bytes are safe in Drive now: keep a pointer, drop the Mongo copy.
+						if (res?.success && res.driveFileId) {
+							Attachment.findByIdAndUpdate(createdAtt._id, {
+								$set: { driveFileId: res.driveFileId },
+								$unset: { data: "" },
+							}).catch(() => { });
+						}
+					})
+					.catch(() => { });
 			} catch (e) { }
 		}
 
