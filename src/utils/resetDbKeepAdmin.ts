@@ -14,6 +14,7 @@ import {
   RfqCounter,
   ProcessedMessage,
 } from '../models';
+import { confirmDestructiveRun } from './destructiveGuard';
 
 dotenv.config();
 
@@ -22,6 +23,26 @@ async function resetDbKeepAdmin() {
 
   try {
     await connectDB();
+
+    // 0. Refuse to run without --force. This one deletes real user accounts, so the
+    // banner shows the target database before a single record is touched.
+    await confirmDestructiveRun({
+      script: 'reset-db-keep-admin',
+      willDelete: [
+        'every user NOT in the ADMIN role (accounts cannot be recovered)',
+        'all enquiries, attachments, counters, inbox history, logs, notifications',
+        'non-admin entries in the assignee directory',
+        'all uploads/enquiries files on local disk',
+      ],
+      keep: ['roles and permission grants', 'ADMIN-role users'],
+      counts: async () => [
+        { label: 'users (total)', count: await User.countDocuments() },
+        { label: 'enquiries', count: await Enquiry.countDocuments() },
+        { label: 'attachments', count: await Attachment.countDocuments() },
+        { label: 'processed messages', count: await ProcessedMessage.countDocuments() },
+        { label: 'activity logs', count: await ActivityLog.countDocuments() },
+      ],
+    });
 
     // 1. Find ADMIN Role
     const adminRole: any = await Role.findOne({ name: 'ADMIN' });

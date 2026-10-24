@@ -5,6 +5,7 @@ import { connectDB } from '../config/db';
 import { clearGoogleDriveData } from '../services/gdriveService';
 import { Enquiry, Attachment, ActivityLog, Notification, User } from '../models';
 import { ProcessedMessage, RfqCounter } from '../models/AssigneeEmail';
+import { confirmDestructiveRun } from './destructiveGuard';
 
 dotenv.config();
 
@@ -13,6 +14,27 @@ async function clearRfqData() {
 
   try {
     await connectDB();
+
+    // 0. Stop an accidental run against production. This script deletes Google Drive
+    // files as its very first step, which no DB rollback can undo, so the check has to
+    // come before anything is touched.
+    await confirmDestructiveRun({
+      script: 'clear-rfq-data',
+      willDelete: [
+        'all RFQ enquiries, attachments, counters and inbox history (MongoDB)',
+        'all RFQ files and folders in Google Drive',
+        'all uploads/enquiries files on local disk',
+        'activity logs and notifications',
+      ],
+      keep: ['users', 'roles and permissions', 'assignee directory'],
+      counts: async () => [
+        { label: 'enquiries', count: await Enquiry.countDocuments() },
+        { label: 'attachments', count: await Attachment.countDocuments() },
+        { label: 'processed messages', count: await ProcessedMessage.countDocuments() },
+        { label: 'activity logs', count: await ActivityLog.countDocuments() },
+        { label: 'notifications', count: await Notification.countDocuments() },
+      ],
+    });
 
     // 1. Google Drive Cloud Cleanup
     console.log('Cleaning up Google Drive RFQ folders & files...');

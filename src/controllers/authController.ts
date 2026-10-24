@@ -31,6 +31,20 @@ const changePasswordSchema = z.object({
   newPassword: z.string().min(6, 'Password must be at least 6 characters'),
 });
 
+/**
+ * Resolve a role's capability list as "MODULE:ACTION" strings. Every auth entry
+ * point (login, Google login, /auth/me) must return the same shape, otherwise
+ * the frontend permission gate silently sees an empty list and hides things it
+ * should not — or shows things it should not.
+ */
+async function getPermissionStrings(roleId: any): Promise<string[]> {
+  if (!roleId) return [];
+  const rolePermissions = await RolePermission.find({ roleId }).populate('permissionId');
+  return rolePermissions
+    .filter((rp: any) => rp.permissionId)
+    .map((rp: any) => `${rp.permissionId.module}:${rp.permissionId.action}`);
+}
+
 export const login = async (req: AuthenticatedRequest, res: Response) => {
   try {
     const { email, password } = loginSchema.parse(req.body);
@@ -74,6 +88,7 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const roleName = user.roleId?.name || 'USER';
+    const permissions = await getPermissionStrings(user.roleId?._id);
     const payload = { userId: user._id.toString(), email: user.email, role: roleName };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -111,6 +126,7 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
           email: user.email,
           role: roleName,
           status: user.status,
+          permissions,
         },
       },
     });
@@ -309,10 +325,7 @@ export const getMe = async (req: AuthenticatedRequest, res: Response) => {
     const user: any = await User.findById(req.user!.userId).populate('roleId');
     if (!user) return res.status(404).json({ success: false, message: 'User not found' });
 
-    const rolePermissions = await RolePermission.find({ roleId: user.roleId?._id }).populate('permissionId');
-    const permissions = rolePermissions
-      .filter((rp: any) => rp.permissionId)
-      .map((rp: any) => `${rp.permissionId.module}:${rp.permissionId.action}`);
+    const permissions = await getPermissionStrings(user.roleId?._id);
 
     const userApps = await UserApplication.find({ userId: user._id }).populate('applicationId');
     const applications = userApps.filter((ua: any) => ua.applicationId).map((ua: any) => ua.applicationId);
@@ -414,6 +427,7 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
     }
 
     const roleName = user.roleId?.name || 'USER';
+    const permissions = await getPermissionStrings(user.roleId?._id);
     const payload = { userId: user._id.toString(), email: user.email, role: roleName };
     const accessToken = generateAccessToken(payload);
     const refreshToken = generateRefreshToken(payload);
@@ -448,6 +462,7 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
           email: user.email,
           role: roleName,
           status: user.status,
+          permissions,
         },
       },
     });
@@ -463,7 +478,7 @@ export const seedData = async (req: AuthenticatedRequest, res: Response) => {
     await seedDatabase();
     return res.json({
       success: true,
-      message: 'Database successfully seeded with default Encon roles, permissions, applications, and staff users!',
+      message: 'RBAC roles, permission rows and role grants synced from the capability catalogue. No user or application records were touched.',
     });
   } catch (error: any) {
     console.error('Error running seedData:', error);

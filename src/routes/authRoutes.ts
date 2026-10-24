@@ -11,11 +11,13 @@ import {
   googleLogin,
   seedData,
 } from '../controllers/authController';
-import { authenticateToken } from '../middleware/authMiddleware';
+import { authenticateToken, requireRoles } from '../middleware/authMiddleware';
 
 const router = Router();
 
-router.all('/seed', seedData);
+// Writes RBAC rows (roles, permissions, grants). It touches no users and no
+// application data, but it can hand out privileges — so ADMIN only, authenticated.
+router.post('/seed', authenticateToken, requireRoles(['ADMIN']), seedData);
 router.post('/login', login);
 router.post('/google', googleLogin);
 router.post('/refresh', refreshToken);

@@ -1,16 +1,22 @@
+/**
+ * RBAC seed — roles, permission rows and role grants ONLY.
+ *
+ * Deliberately does NOT create or modify users, passwords, application rows or the
+ * assignee directory. This runs against production, where real accounts already
+ * exist: the previous version upserted a named administrator with a hard-coded
+ * password and forced status ACTIVE, which would have reset a live account.
+ * Nothing here touches User records; re-running is safe and idempotent.
+ */
 import dotenv from 'dotenv';
-import bcrypt from 'bcryptjs';
 import { connectDB } from '../config/db';
 import { Role } from '../models/Role';
 import { Permission, RolePermission } from '../models/Permission';
-import { Application, UserApplication } from '../models/Application';
-import { User } from '../models/User';
-import { AssigneeEmail } from '../models/AssigneeEmail';
+import { CAPABILITIES, grantsByRole, capabilityKey } from '../config/capabilities';
 
 dotenv.config();
 
 export async function seedDatabase() {
-  console.log('🌱 Starting Encon Command Center Mongoose MongoDB Seeding (ADMIN USER ONLY)...');
+  console.log('🌱 Seeding RBAC roles, permissions and grants (no users, no applications)...');
 
   await connectDB();
 
@@ -26,107 +32,52 @@ export async function seedDatabase() {
 
   const rolesMap: Record<string, any> = {};
   for (const r of rolesData) {
+    // $setOnInsert: create the role if it is missing, but never overwrite one that
+    // already exists — production descriptions may have been edited in the UI, and a
+    // role you deliberately deleted must not come back on every seed.
     const role = await Role.findOneAndUpdate(
       { name: r.name },
-      { description: r.description, isSystem: r.isSystem },
+      { $setOnInsert: { description: r.description, isSystem: r.isSystem } },
       { upsert: true, new: true }
     );
     rolesMap[r.name] = role._id;
   }
-  console.log('✅ Created default Roles');
+  console.log('✅ Ensured default Roles exist (existing ones left untouched)');
 
-  // 2. Permissions
-  const modules = [
-    'USER_MGMT',
-    'ROLE_MGMT',
-    'APP_MGMT',
-    'DASHBOARD',
-    'ANALYTICS',
-    'ACTIVITY_LOGS',
-    'NOTIFICATIONS',
-    'RFQ_MGMT',
-    'RFQ_COSTING',
-    'RFQ_REVIEW',
-    'RFQ_APPROVAL',
-    'RFQ_OFFERS',
-  ];
-  const actions = ['READ', 'WRITE', 'DELETE', 'MANAGE'];
+  // 2. Permissions — driven by the capability catalogue so the stored matrix, the
+  // Roles page and the API checks can never drift apart.
+  const permIdByKey = new Map<string, any>();
+  for (const def of CAPABILITIES) {
+    for (const act of def.actions) {
+      const perm = await Permission.findOneAndUpdate(
+        { module: def.module, action: act },
+        { $setOnInsert: { description: `${act} on ${def.label}` } },
+        { upsert: true, new: true }
+      );
+      permIdByKey.set(capabilityKey(def.module, act), perm._id);
+    }
+  }
+  console.log(`✅ Created ${permIdByKey.size} permission rows from the capability catalogue`);
 
-  for (const mod of modules) {
-    for (const act of actions) {
-      await Permission.findOneAndUpdate(
-        { module: mod, action: act },
-        { description: `Permission to ${act} in ${mod}` },
+  // 3. Role grants — an exact per-role set, never a blanket "all permissions".
+  // The previous version handed ADMIN, CO, GM and PRODUCTION_HEAD every row, which
+  // made the matrix unenforceable for them and silently granted any capability added
+  // later. legacyGrantTo in the catalogue encodes what each role actually could do.
+  for (const [roleName, keys] of Object.entries(grantsByRole())) {
+    const roleId = rolesMap[roleName];
+    if (!roleId) continue;
+    for (const key of keys) {
+      const permissionId = permIdByKey.get(key);
+      if (!permissionId) continue;
+      await RolePermission.findOneAndUpdate(
+        { roleId, permissionId },
+        {},
         { upsert: true, new: true }
       );
     }
   }
-  console.log('✅ Created Permissions');
-
-  const allPermissions = await Permission.find();
-  const fullPermissionRoleNames = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES'];
-
-  for (const roleName of fullPermissionRoleNames) {
-    if (rolesMap[roleName]) {
-      for (const perm of allPermissions) {
-        await RolePermission.findOneAndUpdate(
-          { roleId: rolesMap[roleName], permissionId: perm._id },
-          {},
-          { upsert: true, new: true }
-        );
-      }
-    }
-  }
-
-  // 3. Applications
-  const appData = {
-    code: 'RFQ_AUTOMATION',
-    name: 'Encon RFQ & Offer Automation System',
-    description: 'Unified Request For Quotation lifecycle management, costing review, and offer generator.',
-    category: 'CORE',
-    baseUrl: 'http://localhost:3000/rfq',
-    ssoEndpoint: 'http://localhost:3000/api/auth/sso',
-    icon: 'file-text',
-    status: 'ACTIVE',
-  };
-
-  const app = await Application.findOneAndUpdate({ code: appData.code }, appData, { upsert: true, new: true });
-
-  // 4. Target Admin User
-  const passwordHash = await bcrypt.hash('Password12', 10);
-
-  const targetUsers = [
-    { name: 'Puneet Mahender', email: 'pm@encon.co.in', roleName: 'ADMIN' },
-  ];
-
-  for (const u of targetUsers) {
-    const roleId = rolesMap[u.roleName] || rolesMap['ADMIN'];
-    const user: any = await User.findOneAndUpdate(
-      { email: u.email.toLowerCase() },
-      {
-        name: u.name,
-        email: u.email.toLowerCase(),
-        passwordHash,
-        roleId,
-        status: 'ACTIVE',
-      },
-      { upsert: true, new: true }
-    );
-
-    await UserApplication.findOneAndUpdate(
-      { userId: user._id, applicationId: app._id },
-      { grantedBy: 'SYSTEM_SEED' },
-      { upsert: true, new: true }
-    );
-
-    await AssigneeEmail.findOneAndUpdate(
-      { name: u.name },
-      { email: u.email.toLowerCase() },
-      { upsert: true, new: true }
-    );
-  }
-
-  console.log('✅ Seeded system users & directory successfully into MongoDB!');
+  console.log('✅ Applied catalogue-driven role grants');
+  console.log('ℹ️  Users, applications and the assignee directory were left untouched.');
 }
 
 if (require.main === module) {
