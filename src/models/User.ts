@@ -8,6 +8,14 @@ export interface IUser extends Document {
   passwordHash: string;
   status: 'ACTIVE' | 'DISABLED';
   roleId: mongoose.Types.ObjectId;
+  // Employee attributes - all optional so existing admin/staff accounts are
+  // unaffected. Turn a login into an employee that can be assigned to a branch
+  // and tracked for attendance.
+  employeeCode?: string;
+  officeId?: mongoose.Types.ObjectId | null;
+  designation?: string;
+  joiningDate?: Date | null;
+  employmentType?: string;
   resetToken?: string | null;
   resetTokenExpires?: Date | null;
   lastLoginAt?: Date | null;
@@ -24,6 +32,11 @@ const UserSchema = new Schema<IUser>(
     passwordHash: { type: String, required: true },
     status: { type: String, enum: ['ACTIVE', 'DISABLED'], default: 'ACTIVE' },
     roleId: { type: Schema.Types.ObjectId, ref: 'Role', required: true },
+    employeeCode: { type: String, default: '', trim: true },
+    officeId: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
+    designation: { type: String, default: '' },
+    joiningDate: { type: Date, default: null },
+    employmentType: { type: String, default: 'FULL_TIME' },
     resetToken: { type: String, default: null },
     resetTokenExpires: { type: Date, default: null },
     lastLoginAt: { type: Date, default: null },

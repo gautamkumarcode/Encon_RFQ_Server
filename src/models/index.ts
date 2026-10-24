@@ -12,3 +12,5 @@ export * from './TallyBook';
 export * from './TallyBankTxn';
 export * from './Client';
 export * from './OrderInHand';
+export * from './Office';
+export * from './Attendance';

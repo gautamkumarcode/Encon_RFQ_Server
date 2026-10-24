@@ -47,6 +47,8 @@ const SALES = ['ADMIN', 'SALES_MARKETING'];
 /** Anyone the old canEdit/canChangeStatus checks let edit an RFQ. */
 const ALL_RFK_USERS = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING', 'TECHNICAL_PERSON'];
 const ADMIN_ONLY = ['ADMIN'];
+/** Every staff role - used for self-service rights like clocking in. */
+const ALL_STAFF = ALL_RFK_USERS;
 
 export const RFQ_CAPABILITIES: CapabilityDef[] = [
   {
@@ -361,6 +363,42 @@ export const TALLY_CAPABILITIES: CapabilityDef[] = [
   },
 ];
 
+export const HR_CAPABILITIES: CapabilityDef[] = [
+  {
+    module: 'HR_OFFICES',
+    label: 'Office / Branch Management',
+    group: 'HR · People',
+    description: 'Create and manage branch offices, their location, geofence radius and working-hour rules.',
+    actions: ['READ', 'WRITE', 'DELETE'],
+    legacyGrantTo: ['ADMIN', 'CO'],
+  },
+  {
+    module: 'HR_EMPLOYEES',
+    label: 'Employee Directory',
+    group: 'HR · People',
+    description: 'Manage employee records - assign a branch, designation, join date and employment type.',
+    actions: ['READ', 'WRITE', 'DELETE'],
+    legacyGrantTo: ['ADMIN', 'CO'],
+  },
+  {
+    module: 'HR_ATTENDANCE',
+    label: 'Attendance Register & Reports',
+    group: 'HR · Attendance',
+    description: 'View every employee\'s attendance, and edit or regularize punches. Self clock-in is a separate right.',
+    actions: ['READ', 'WRITE', 'DELETE'],
+    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'],
+  },
+  {
+    module: 'ATTENDANCE_CLOCK',
+    label: 'Clock In / Out (Self-service)',
+    group: 'HR · Attendance',
+    description: 'Let a signed-in employee clock in and out for themselves from the attendance app.',
+    actions: ['WRITE'],
+    // Every staff role can clock themselves in - this is the everyday right.
+    legacyGrantTo: ALL_STAFF,
+  },
+];
+
 /** Every capability the system knows about. Add later modules to this list. */
 export const CAPABILITIES: CapabilityDef[] = [
   ...RFQ_CAPABILITIES,
@@ -368,6 +406,7 @@ export const CAPABILITIES: CapabilityDef[] = [
   ...SYSTEM_CAPABILITIES,
   ...ORDER_CLIENT_CAPABILITIES,
   ...TALLY_CAPABILITIES,
+  ...HR_CAPABILITIES,
 ];
 
 /** Every "MODULE:ACTION" key the catalogue implies. */

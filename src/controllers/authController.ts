@@ -120,6 +120,9 @@ export const login = async (req: AuthenticatedRequest, res: Response) => {
     return res.json({
       success: true,
       data: {
+        // Also returned in the body so non-cookie clients (the standalone
+        // attendance app) can authenticate with a Bearer token.
+        accessToken,
         user: {
           id: user._id.toString(),
           name: user.name,
@@ -456,6 +459,9 @@ export const googleLogin = async (req: AuthenticatedRequest, res: Response) => {
     return res.json({
       success: true,
       data: {
+        // Access token in the body too so the token-based attendance app (separate
+        // origin, no cookies) can authenticate subsequent calls with Bearer auth.
+        accessToken,
         user: {
           id: user._id.toString(),
           name: user.name,
