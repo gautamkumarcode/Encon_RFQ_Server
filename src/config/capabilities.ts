@@ -389,6 +389,14 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'],
   },
   {
+    module: 'HR_HOLIDAYS',
+    label: 'Holiday Calendar',
+    group: 'HR · Attendance',
+    description: 'Maintain the company / branch holiday list shown in the attendance calendars.',
+    actions: ['READ', 'WRITE', 'DELETE'],
+    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'],
+  },
+  {
     module: 'ATTENDANCE_CLOCK',
     label: 'Clock In / Out (Self-service)',
     group: 'HR · Attendance',

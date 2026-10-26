@@ -11,6 +11,7 @@ import authRoutes from "./routes/authRoutes";
 import clientRoutes from "./routes/clientRoutes";
 import dashboardRoutes from "./routes/dashboardRoutes";
 import employeeRoutes from "./routes/employeeRoutes";
+import holidayRoutes from "./routes/holidayRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import officeRoutes from "./routes/officeRoutes";
 import orderRoutes from "./routes/orderRoutes";
@@ -119,6 +120,7 @@ app.use("/api/orders", orderRoutes);
 app.use("/api/offices", officeRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/attendance", attendanceRoutes);
+app.use("/api/holidays", holidayRoutes);
 
 // Global Error Handler
 app.use(

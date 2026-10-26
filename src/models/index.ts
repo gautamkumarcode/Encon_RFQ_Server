@@ -14,3 +14,4 @@ export * from './Client';
 export * from './OrderInHand';
 export * from './Office';
 export * from './Attendance';
+export * from './Holiday';

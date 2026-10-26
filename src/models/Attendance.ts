@@ -15,6 +15,8 @@ export type AttendanceStatus =
 
 export interface IPunch {
   time?: Date | null;
+  /** Branch this punch physically happened at (GPS auto-detected). */
+  officeId?: mongoose.Types.ObjectId | null;
   lat?: number;
   lng?: number;
   accuracy?: number;
@@ -42,6 +44,7 @@ export interface IAttendance extends Document {
 const PunchSchema = new Schema<IPunch>(
   {
     time: { type: Date, default: null },
+    officeId: { type: Schema.Types.ObjectId, ref: 'Office', default: null },
     lat: { type: Number },
     lng: { type: Number },
     accuracy: { type: Number },
