@@ -48,7 +48,8 @@ const SALES = ['ADMIN', 'SALES_MARKETING'];
 const ALL_RFK_USERS = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING', 'TECHNICAL_PERSON'];
 const ADMIN_ONLY = ['ADMIN'];
 /** Every staff role - used for self-service rights like clocking in. */
-const ALL_STAFF = ALL_RFK_USERS;
+// HR is a staff role too, so its own people can clock in like everyone else.
+const ALL_STAFF = [...ALL_RFK_USERS, 'HR'];
 
 export const RFQ_CAPABILITIES: CapabilityDef[] = [
   {
@@ -269,7 +270,7 @@ export const SYSTEM_CAPABILITIES: CapabilityDef[] = [
     actions: ['READ'],
     // The dashboard route is open to every signed-in user today, so this grant only
     // describes intent — it is not yet enforced anywhere.
-    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING'],
+    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING', 'HR'],
   },
   {
     module: 'ANALYTICS',
@@ -359,7 +360,8 @@ export const TALLY_CAPABILITIES: CapabilityDef[] = [
     actions: ['READ', 'WRITE'],
     // The module row never existed in Permission before, so only ADMIN (which
     // bypasses) could reach Tally. Granting READ here is what makes it assignable.
-    legacyGrantTo: ADMIN_ONLY,
+    // HR manages the Tally books day-to-day, so it holds READ + WRITE.
+    legacyGrantTo: ['ADMIN', 'HR'],
   },
 ];
 
@@ -370,7 +372,7 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     group: 'HR · People',
     description: 'Create and manage branch offices, their location, geofence radius and working-hour rules.',
     actions: ['READ', 'WRITE', 'DELETE'],
-    legacyGrantTo: ['ADMIN', 'CO'],
+    legacyGrantTo: ['ADMIN', 'CO', 'HR'],
   },
   {
     module: 'HR_EMPLOYEES',
@@ -378,7 +380,7 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     group: 'HR · People',
     description: 'Manage employee records - assign a branch, designation, join date and employment type.',
     actions: ['READ', 'WRITE', 'DELETE'],
-    legacyGrantTo: ['ADMIN', 'CO'],
+    legacyGrantTo: ['ADMIN', 'CO', 'HR'],
   },
   {
     module: 'HR_ATTENDANCE',
@@ -386,7 +388,7 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     group: 'HR · Attendance',
     description: 'View every employee\'s attendance, and edit or regularize punches. Self clock-in is a separate right.',
     actions: ['READ', 'WRITE', 'DELETE'],
-    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'],
+    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'HR'],
   },
   {
     module: 'HR_HOLIDAYS',
@@ -394,7 +396,7 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     group: 'HR · Attendance',
     description: 'Maintain the company / branch holiday list shown in the attendance calendars.',
     actions: ['READ', 'WRITE', 'DELETE'],
-    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'],
+    legacyGrantTo: ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'HR'],
   },
   {
     module: 'ATTENDANCE_CLOCK',

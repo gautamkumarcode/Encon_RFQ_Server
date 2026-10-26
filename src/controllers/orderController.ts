@@ -31,6 +31,7 @@ function serialize(o: any) {
     lineItems: o.lineItems || [],
     currency: o.currency,
     orderValue: o.orderValue,
+    fxRate: o.fxRate || 0,
     orderValueINR: o.orderValueINR,
     termsOfPayment: o.termsOfPayment,
     advanceAmount: o.advanceAmount,
@@ -70,27 +71,53 @@ export const listOrders = async (req: AuthenticatedRequest, res: Response) => {
     const openINR = data
       .filter((r) => !['Dispatched', 'Closed'].includes(r.status))
       .reduce((s, r) => s + (r.orderValueINR || 0), 0);
+    const openCount = data.filter((r) => !['Dispatched', 'Closed'].includes(r.status)).length;
+    // Payment chips: money received vs still pending (per-order floor at 0 so
+    // an overpaid order never hides another order's dues).
+    const receivedINR = data.reduce((s, r) => s + (r.totalReceived || 0), 0);
+    const pendingINR = data.reduce((s, r) => s + Math.max(0, (r.orderValueINR || 0) - (r.totalReceived || 0)), 0);
 
-    return res.json({ success: true, count: data.length, totalINR, openINR, data });
+    return res.json({ success: true, count: data.length, totalINR, openINR, openCount, receivedINR, pendingINR, data });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
 };
 
-/** GET /api/orders/summary — { count, totalINR, openINR } for the chip. */
+/** GET /api/orders/summary — { count, totalINR, openINR, receivedINR, pendingINR } for the chips. */
 export const ordersSummary = async (_req: AuthenticatedRequest, res: Response) => {
   try {
     const agg: any[] = await OrderInHand.aggregate([
+      { $addFields: {
+        received: {
+          $reduce: {
+            input: { $ifNull: ['$payments', []] },
+            initialValue: 0,
+            in: { $add: ['$$value', { $ifNull: ['$$this.amount', 0] }] },
+          },
+        },
+      } },
       { $group: {
         _id: null,
         count: { $sum: 1 },
         totalINR: { $sum: '$orderValueINR' },
+        receivedINR: { $sum: '$received' },
+        pendingINR: { $sum: { $max: [0, { $subtract: ['$orderValueINR', '$received'] }] } },
         openINR: { $sum: { $cond: [{ $not: { $in: ['$status', ['Dispatched', 'Closed']] } }, '$orderValueINR', 0] } },
         openCount: { $sum: { $cond: [{ $not: { $in: ['$status', ['Dispatched', 'Closed']] } }, 1, 0] } },
       } },
     ]);
-    const s = agg[0] || { count: 0, totalINR: 0, openINR: 0, openCount: 0 };
-    return res.json({ success: true, data: { count: s.count, totalINR: s.totalINR, openINR: s.openINR, openCount: s.openCount } });
+    const s = agg[0] || { count: 0, totalINR: 0, receivedINR: 0, pendingINR: 0, openINR: 0, openCount: 0 };
+    return res.json({
+      success: true,
+      data: {
+        count: s.count,
+        totalINR: s.totalINR,
+        receivedINR: s.receivedINR,
+        pendingINR: s.pendingINR,
+        openINR: s.openINR,
+        openCount: s.openCount,
+      },
+    });
   } catch (error: any) {
     return res.status(500).json({ success: false, message: error.message });
   }
@@ -196,6 +223,8 @@ async function mapBody(body: any) {
   const cur = (currency || 'INR').toUpperCase();
   const orderValue = lineSum > 0 ? lineSum : (Number(body.orderValue) || 0);
   const orderValueINRFinal = cur === 'INR' ? orderValue : (Number(orderValueINR) || 0);
+  // Rate the user typed for this order (INR per 1 foreign unit); 0 for INR.
+  const fxRate = cur === 'INR' ? 0 : Number(body.fxRate) || 0;
 
   return {
     client: clientRef || null,
@@ -209,6 +238,7 @@ async function mapBody(body: any) {
     lineItems: cleanLineItems,
     currency: currency || 'INR',
     orderValue,
+    fxRate,
     orderValueINR: orderValueINRFinal,
     termsOfPayment: termsOfPayment || '',
     advanceAmount: Number(advanceAmount) || 0,

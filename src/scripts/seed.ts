@@ -35,6 +35,7 @@ export async function seedDatabase() {
     { name: 'PRODUCTION_HEAD', description: 'Production Head (Full RFQ Access)', isSystem: true },
     { name: 'SALES_MARKETING', description: 'Sales & Marketing Specialist (Create/Edit RFQs, No Review)', isSystem: true },
     { name: 'TECHNICAL_PERSON', description: 'Technical Specialist (View & Upload Documents Only)', isSystem: true },
+    { name: 'HR', description: 'HR - attendance, employees, offices, holidays and Tally data', isSystem: true },
   ];
 
   const rolesMap: Record<string, any> = {};

@@ -38,6 +38,7 @@ export interface IOrderInHand extends Document {
   lineItems: IOrderLineItem[];
   currency: string;               // 'INR' | 'USD' | ...
   orderValue: number;             // total in `currency` (sum of lineItems.value)
+  fxRate: number;                 // user-entered INR per 1 unit of currency (0 for INR orders)
   orderValueINR: number;          // INR equivalent (for the chip total)
   termsOfPayment: string;
   advanceAmount: number;
@@ -87,6 +88,7 @@ const OrderInHandSchema = new Schema<IOrderInHand>(
     lineItems:           { type: [LineItemSchema], default: [] },
     currency:            { type: String, default: 'INR', trim: true },
     orderValue:          { type: Number, default: 0 },
+    fxRate:              { type: Number, default: 0 },
     orderValueINR:       { type: Number, default: 0 },
     termsOfPayment:      { type: String, default: '' },
     advanceAmount:       { type: Number, default: 0 },
