@@ -8,6 +8,10 @@ import { sendTatExpiredReminderEmail } from './emailService';
 const lastReminderSentMap = new Map<string, number>();
 const TWENTY_FOUR_HOURS_MS = 24 * 60 * 60 * 1000;
 
+// Toggle sales-responsibility TAT reminder emails via env var (SEND_SALES_TAT_EMAILS in .env, defaults to false)
+// Read at call time, not module load, because dotenv.config() runs after imports in server.ts
+const isSalesTatEmailsEnabled = () => process.env.SEND_SALES_TAT_EMAILS === 'true';
+
 async function resolveEmailForAssignee(nameOrEmail?: string): Promise<string> {
   if (!nameOrEmail) return '';
   const trimmed = nameOrEmail.trim();
@@ -54,7 +58,9 @@ export class RfqNotificationService {
           // Only send reminder if 24 hours have elapsed since last email
           if (now - lastSent > TWENTY_FOUR_HOURS_MS) {
             const techEmail = await resolveEmailForAssignee(e.technical || e.assignedTo);
-            const salesEmail = await resolveEmailForAssignee(e.salesResponsibility || e.assignedTo);
+            const salesEmail = isSalesTatEmailsEnabled()
+              ? await resolveEmailForAssignee(e.salesResponsibility || e.assignedTo)
+              : '';
 
             const recipients = Array.from(new Set([techEmail, salesEmail].filter((em) => em && em.includes('@'))));
 
