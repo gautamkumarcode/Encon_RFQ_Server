@@ -24,6 +24,11 @@ import {
 	mirrorAttachmentToDrive,
 } from "../services/gdriveService";
 import { InboxService } from "../services/inboxService";
+import {
+	applyAssigneeIdentityChange,
+	dropStaleDirectoryAlias,
+	renameAssigneeLabel,
+} from "../utils/assigneeIdentity";
 import { logActivity } from "../utils/auditLogger";
 
 import zlib from "zlib";
@@ -510,6 +515,9 @@ export function getUserRfqScopeWhere(userInfo?: any): any {
 
 	const nameStr = (userInfo.name || "").trim();
 	const emailStr = (userInfo.email || "").trim();
+	// Accept either shape: callers pass the hydrated userInfo ({ id }) or fall back
+	// to the JWT principal ({ userId }).
+	const selfId = String(userInfo.id || userInfo.userId || "");
 
 	const userNameRegex = nameStr
 		? new RegExp(`^${nameStr.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`, "i")
@@ -519,6 +527,16 @@ export function getUserRfqScopeWhere(userInfo?: any): any {
 		: null;
 
 	const assigneeOrConditions: any[] = [];
+	// The User link is the authoritative identity. Matching on it first is what
+	// keeps a renamed user's own list intact: the stored assignee string can still
+	// carry their old name, and a name-only match would silently return nothing.
+	if (selfId && mongoose.Types.ObjectId.isValid(selfId)) {
+		assigneeOrConditions.push(
+			{ assignedToId: selfId },
+			{ technicalId: selfId },
+			{ salesResponsibilityId: selfId },
+		);
+	}
 	if (userNameRegex) {
 		assigneeOrConditions.push(
 			{ assignedTo: userNameRegex },
@@ -3572,59 +3590,74 @@ export const saveDirectory = async (
 		}
 
 		let renamedCount = 0;
+		const cascadeWarnings: string[] = [];
 		for (const item of items) {
 			const orig = (item.origName || "").trim();
 			const name = (item.name || "").trim();
 			const email = (item.email || "").trim();
+			const userId = String(item.id || "").trim();
+			const isSystemUser =
+				!!userId && mongoose.Types.ObjectId.isValid(userId);
 
 			if (!name) continue;
 
 			if (orig && orig.toLowerCase() !== name.toLowerCase()) {
-				const allEnquiries: any[] = await Enquiry.find().lean();
-				for (const e of allEnquiries) {
-					let modified = false;
-					const fields: ("assignedTo" | "salesResponsibility" | "technical")[] =
-						["assignedTo", "salesResponsibility", "technical"];
-					const updateObj: any = {};
-
-					fields.forEach((field) => {
-						const val = e[field];
-						if (val) {
-							const tokens = val.split("/").map((t: string) => t.trim());
-							if (
-								tokens.some(
-									(t: string) => t.toLowerCase() === orig.toLowerCase(),
-								)
-							) {
-								updateObj[field] = tokens
-									.map((t: string) =>
-										t.toLowerCase() === orig.toLowerCase() ? name : t,
-									)
-									.join(" / ");
-								modified = true;
-							}
-						}
+				if (isSystemUser) {
+					// This row is a real account, so the rename has to move the account.
+					// It used to rewrite only the enquiry labels, leaving the User on the
+					// old name: every RFQ then carried a label matching no account, which
+					// reads as a brand-new assignee holding all of that user's enquiries.
+					await User.findByIdAndUpdate(userId, { name });
+					const cascade = await applyAssigneeIdentityChange({
+						userId,
+						oldName: orig,
+						newName: name,
 					});
-
-					if (modified) {
-						await Enquiry.findByIdAndUpdate(e._id, updateObj);
+					// Say so in the response: some RFQs may still be labelled with a name
+					// that more than one account uses, which the directory cannot resolve.
+					cascadeWarnings.push(...cascade.warnings);
+					cascade.warnings.forEach((w) =>
+						console.warn(`[rename cascade] directory user ${userId}: ${w}`),
+					);
+					await dropStaleDirectoryAlias(orig, userId);
+				} else {
+					// No User account behind the name, so there is no link to follow and the
+					// label is all we have. That is only safe when no live account bears the
+					// name as well - otherwise those rows belong to somebody with an id, and
+					// rewriting them here would move a real person's queue to a typed-in label.
+					const bearsName = await User.countDocuments({
+						name: new RegExp(
+							`^${orig.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
+							"i",
+						),
+					});
+					if (bearsName) {
+						cascadeWarnings.push(
+							`"${orig}" is also an account name, so its RFQs were left alone - rename that account instead of its directory entry.`,
+						);
+					} else {
+						// Token by token, so a shared RFQ keeps its other assignee.
+						await renameAssigneeLabel(orig, name);
+						await AssigneeEmail.deleteMany({ name: orig });
 					}
 				}
-
-				await AssigneeEmail.deleteMany({ name: orig });
 				renamedCount++;
 			}
 
-			await AssigneeEmail.findOneAndUpdate(
-				{ name },
-				{ name, email },
-				{ upsert: true, new: true },
-			);
+			// Directory aliases only make sense for names that are not an account, and
+			// must never keep pointing at a name the user no longer has.
+			if (!isSystemUser) {
+				await AssigneeEmail.findOneAndUpdate(
+					{ name },
+					{ name, email },
+					{ upsert: true, new: true },
+				);
+			}
 		}
 
 		return res.json({
 			success: true,
-			message: `Directory updated successfully.${renamedCount ? ` Renamed ${renamedCount} assignee(s).` : ""}`,
+			message: `Directory updated successfully.${renamedCount ? ` Renamed ${renamedCount} assignee(s).` : ""}${cascadeWarnings.length ? ` Note: ${cascadeWarnings.join(" ")}` : ""}`,
 		});
 	} catch (error: any) {
 		return res.status(400).json({ success: false, message: error.message });

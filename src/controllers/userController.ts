@@ -3,10 +3,12 @@ import { Response } from "express";
 import { z } from "zod";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { UserApplication } from "../models/Application";
-import { AssigneeEmail } from "../models/AssigneeEmail";
-import { Enquiry } from "../models/Enquiry";
 import { User } from "../models/User";
 import { sendWelcomeUserEmail } from "../services/emailService";
+import {
+	applyAssigneeIdentityChange,
+	dropStaleDirectoryAlias,
+} from "../utils/assigneeIdentity";
 import { logActivity } from "../utils/auditLogger";
 
 const createUserSchema = z.object({
@@ -201,62 +203,36 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response) => {
 			}
 		}
 
-		if (name && name.trim() !== existingUser.name.trim()) {
-			const oldName = existingUser.name.trim();
-			const oldEmail = existingUser.email.trim();
-			const oldNameRegex = new RegExp(
-				`^${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-				"i",
-			);
-			const oldEmailRegex = new RegExp(
-				`^${oldEmail.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-				"i",
-			);
-			const enquiries: any[] = await Enquiry.find({
-				$or: [
-					{ assignedToId: id },
-					{ technicalId: id },
-					{ salesResponsibilityId: id },
-					{ assignedTo: oldNameRegex },
-					{ technical: oldNameRegex },
-					{ salesResponsibility: oldNameRegex },
-					{ assignedTo: oldEmailRegex },
-					{ technical: oldEmailRegex },
-					{ salesResponsibility: oldEmailRegex },
-				],
+		// An enquiry keeps its assignee twice: a User link and a display string that
+		// filters, workload counts and personal scoping all group on. Renaming the
+		// account without rewriting that label strands the RFQs under a name matching
+		// no one - the user's own list empties and a ghost assignee appears.
+		const newName = String(updatedUser?.name || "").trim();
+		const nameChanged = !!name && newName !== String(existingUser.name).trim();
+		const emailChanged =
+			!!updatePayload.email && updatePayload.email !== String(existingUser.email).toLowerCase();
+		const cascadeWarnings: string[] = [];
+		if ((nameChanged || emailChanged) && newName) {
+			const cascade = await applyAssigneeIdentityChange({
+				userId: id,
+				oldName: String(existingUser.name).trim(),
+				newName,
+				// Only meaningful once the email actually moved: rows labelled with the
+				// old address belong to this account and must follow it.
+				oldEmail: emailChanged ? String(existingUser.email).trim() : undefined,
 			});
+			// A refused cascade is not a silent failure: it means RFQs are left
+			// attributed to a name two accounts share.
+			cascadeWarnings.push(...cascade.warnings);
+			cascade.warnings.forEach((w) =>
+				console.warn(`[rename cascade] user ${id}: ${w}`),
+			);
 
-			for (const enquiry of enquiries) {
-				const changes: any = {};
-				for (const field of [
-					"assignedTo",
-					"technical",
-					"salesResponsibility",
-				]) {
-					const idField = `${field}Id`;
-					const current = String(enquiry[field] || "")
-						.trim()
-						.toLowerCase();
-					if (
-						String(enquiry[idField] || "") === id ||
-						current === oldName.toLowerCase() ||
-						current === oldEmail.toLowerCase()
-					) {
-						changes[field] = name.trim();
-						changes[idField] = id;
-					}
-				}
-				if (Object.keys(changes).length > 0) {
-					await Enquiry.updateOne({ _id: enquiry._id }, { $set: changes });
-				}
+			// Keep the legacy directory from still advertising the old name - unless
+			// another account still answers to it.
+			if (nameChanged) {
+				await dropStaleDirectoryAlias(String(existingUser.name).trim(), id);
 			}
-
-			await AssigneeEmail.deleteMany({
-				name: new RegExp(
-					`^${oldName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}$`,
-					"i",
-				),
-			});
 		}
 
 		await logActivity({
@@ -268,7 +244,7 @@ export const updateUser = async (req: AuthenticatedRequest, res: Response) => {
 
 		return res.json({
 			success: true,
-			message: "User updated successfully",
+			message: `User updated successfully${cascadeWarnings.length ? `. Note: ${cascadeWarnings.join(" ")}` : ""}`,
 			data: updatedUser,
 		});
 	} catch (error: any) {

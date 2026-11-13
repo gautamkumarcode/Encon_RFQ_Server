@@ -14,6 +14,7 @@
 		"reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
 		"clear-rfq-data": "ts-node src/utils/clearRfqData.ts",
 		"backfill-attachments": "ts-node src/utils/backfillAttachmentDrive.ts",
+		"repair-assignee-labels": "ts-node src/utils/repairAssigneeLabels.ts",
 		"sync-matched-rfqs": "node scripts/sync_matched_rfqs.js"
 	},
 	"dependencies": {

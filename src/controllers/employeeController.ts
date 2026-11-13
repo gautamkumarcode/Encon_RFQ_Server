@@ -5,6 +5,10 @@ import { AuthenticatedRequest } from "../middleware/authMiddleware";
 import { User } from "../models/User";
 import { Office } from "../models/Office";
 import { sendWelcomeUserEmail } from "../services/emailService";
+import {
+	applyAssigneeIdentityChange,
+	dropStaleDirectoryAlias,
+} from "../utils/assigneeIdentity";
 import { logActivity } from "../utils/auditLogger";
 
 const employeeFields = {
@@ -186,6 +190,35 @@ export const updateEmployee = async (req: AuthenticatedRequest, res: Response) =
 			.populate("roleId")
 			.populate("officeId");
 
+		// Renaming here used to change only the account, leaving every RFQ labelled
+		// with the previous name. Filters and the assignee's own scoped list match on
+		// that label, so the person appeared to lose all their assigned enquiries.
+		const newName = String(updated?.name || "").trim();
+		const oldName = String(existing.name || "").trim();
+		const oldEmail = String(existing.email || "").trim();
+		const nameChanged = !!update.name && newName !== oldName;
+		const emailChanged = !!update.email && update.email !== oldEmail.toLowerCase();
+		const cascadeWarnings: string[] = [];
+		if ((nameChanged || emailChanged) && newName) {
+			const cascade = await applyAssigneeIdentityChange({
+				userId: id,
+				oldName,
+				newName,
+				oldEmail: emailChanged ? oldEmail : undefined,
+			});
+			// Refused work is reported back rather than swallowed: it means some RFQs
+			// still carry a name that more than one account uses.
+			cascadeWarnings.push(...cascade.warnings);
+			cascade.warnings.forEach((w) =>
+				console.warn(`[rename cascade] employee ${id}: ${w}`),
+			);
+
+			// Drop the old directory alias only if no other account answers to it.
+			if (nameChanged) {
+				await dropStaleDirectoryAlias(oldName, id);
+			}
+		}
+
 		await logActivity({
 			userId: req.user?.userId,
 			userEmail: req.user?.email || "SYSTEM",
@@ -193,7 +226,11 @@ export const updateEmployee = async (req: AuthenticatedRequest, res: Response) =
 			details: { employeeId: id, updates: update },
 		});
 
-		return res.json({ success: true, data: formatEmployee(updated) });
+		return res.json({
+			success: true,
+			data: formatEmployee(updated),
+			...(cascadeWarnings.length ? { warnings: cascadeWarnings } : {}),
+		});
 	} catch (error: any) {
 		return res.status(400).json({ success: false, message: error.message });
 	}
