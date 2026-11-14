@@ -4,6 +4,7 @@ import mongoose from "mongoose";
 import pdfParse from "pdf-parse";
 import * as XLSX from "xlsx";
 import { AuthenticatedRequest } from "../middleware/authMiddleware";
+import { diffEnquiryFields } from "../utils/activityDiff";
 import { ActivityLog } from "../models/ActivityLog";
 import { AssigneeEmail, RfqCounter } from "../models/AssigneeEmail";
 import { Attachment } from "../models/Attachment";
@@ -1318,6 +1319,39 @@ export const getEnquiryById = async (
 				.sort({ createdAt: -1 })
 				.limit(30)
 				.lean();
+
+			// The feed used to show a bare mailbox address as the actor. Resolve
+			// each log to the account it belongs to so people read names.
+			const actorEmails = Array.from(
+				new Set(
+					activityLogs
+						.map((log: any) => String(log.userEmail || "").trim())
+						.filter(Boolean),
+				),
+			);
+			const actorIds = Array.from(
+				new Set(activityLogs.map((log: any) => log.userId).filter(Boolean)),
+			);
+			if (actorEmails.length > 0 || actorIds.length > 0) {
+				const actors: any[] = await User.find({
+					$or: [{ email: { $in: actorEmails } }, { _id: { $in: actorIds } }],
+				})
+					.select("name email")
+					.lean();
+				const nameByEmail = new Map(
+					actors.map((a: any) => [String(a.email || "").toLowerCase(), a.name]),
+				);
+				const nameById = new Map(
+					actors.map((a: any) => [String(a._id), a.name]),
+				);
+				activityLogs = activityLogs.map((log: any) => ({
+					...log,
+					userName:
+						nameById.get(String(log.userId || "")) ||
+						nameByEmail.get(String(log.userEmail || "").toLowerCase()) ||
+						"",
+				}));
+			}
 		} catch (logErr) {
 			console.warn("[getEnquiryById] ActivityLog fetch warning:", logErr);
 			activityLogs = [];
@@ -1558,16 +1592,21 @@ export const updateEnquiry = async (
 			updateData.offerDate = parseIsoDate(body.offerDate);
 		}
 
+		const changedFields = diffEnquiryFields(existing.toObject(), updateData);
+
 		const updated: any = await Enquiry.findByIdAndUpdate(id, updateData, {
 			new: true,
 		});
 
-		await logActivity({
-			userId: req.user?.userId,
-			userEmail: req.user?.email || "SYSTEM",
-			action: "RFQ_UPDATED",
-			details: { enquiryId: id, rfqId: updated.rfqId, updates: body },
-		});
+		// A save that moved nothing should not put a line in the audit feed.
+		if (Object.keys(changedFields).length > 0) {
+			await logActivity({
+				userId: req.user?.userId,
+				userEmail: req.user?.email || "SYSTEM",
+				action: "RFQ_UPDATED",
+				details: { enquiryId: id, rfqId: updated.rfqId, updates: changedFields },
+			});
+		}
 
 		if (body.assignedTo && body.assignedTo !== existing.assignedTo) {
 			createAssignmentNotification(
@@ -2568,7 +2607,7 @@ export const deleteFollowup = async (
 ) => {
 	try {
 		const { id, followupId } = req.params;
-		if (!id || !followupId || !mongoose.Types.ObjectId.isValid(followupId)) {
+		if (!id || !followupId) {
 			return res
 				.status(400)
 				.json({ success: false, message: "Invalid follow-up ID" });
@@ -2579,6 +2618,58 @@ export const deleteFollowup = async (
 			return res
 				.status(404)
 				.json({ success: false, message: "Enquiry not found" });
+		}
+
+		// Legacy timeline rows are parsed out of the followupRemarks text blob and
+		// carry a synthetic `legacy-<index>` id. Remove the matching blob segment
+		// using the exact split the client uses, so indices stay in sync.
+		const legacyMatch = /^legacy-(\d+)$/.exec(followupId);
+		if (legacyMatch) {
+			const legacyIdx = Number(legacyMatch[1]);
+			const blobEntries = String(existing.followupRemarks || "")
+				.split(/\n\n+/)
+				.filter(Boolean);
+			if (legacyIdx >= blobEntries.length) {
+				return res
+					.status(404)
+					.json({ success: false, message: "Follow-up not found" });
+			}
+			const [removedEntry] = blobEntries.splice(legacyIdx, 1);
+			existing.followupRemarks = blobEntries.join("\n\n");
+			if (!existing.followupRemarks) existing.remarks = "";
+
+			await existing.save();
+
+			await logActivity({
+				userId: req.user?.userId,
+				userEmail: req.user?.email || "User",
+				action: "RFQ_FOLLOWUP_DELETED",
+				details: {
+					enquiryId: id,
+					rfqId: existing.rfqId,
+					note: removedEntry,
+					legacy: true,
+				},
+			});
+
+			return res.json({
+				success: true,
+				message: "Follow-up deleted successfully",
+				data: {
+					id: existing._id.toString(),
+					followups: existing.followups,
+					remarks: existing.remarks,
+					followupRemarks: existing.followupRemarks,
+					nextActionDate: existing.nextActionDate,
+					lastCallDate: existing.lastCallDate,
+				},
+			});
+		}
+
+		if (!mongoose.Types.ObjectId.isValid(followupId)) {
+			return res
+				.status(400)
+				.json({ success: false, message: "Invalid follow-up ID" });
 		}
 
 		const deletedFollowup = existing.followups?.find(
