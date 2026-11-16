@@ -12,6 +12,7 @@ import clientRoutes from "./routes/clientRoutes";
 import dashboardRoutes from "./routes/dashboardRoutes";
 import employeeRoutes from "./routes/employeeRoutes";
 import holidayRoutes from "./routes/holidayRoutes";
+import leaveRoutes from "./routes/leaveRoutes";
 import notificationRoutes from "./routes/notificationRoutes";
 import officeRoutes from "./routes/officeRoutes";
 import orderRoutes from "./routes/orderRoutes";
@@ -22,6 +23,7 @@ import userRoutes from "./routes/userRoutes";
 
 import { InboxService } from "./services/inboxService";
 import { RfqNotificationService } from "./services/rfqNotificationService";
+import { runAutoAbsentMarking } from "./controllers/attendanceController";
 
 import { connectDB } from "./config/db";
 
@@ -121,6 +123,7 @@ app.use("/api/offices", officeRoutes);
 app.use("/api/employees", employeeRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/holidays", holidayRoutes);
+app.use("/api/leaves", leaveRoutes);
 
 // Global Error Handler
 app.use(
@@ -165,6 +168,16 @@ if (require.main === module || !process.env.VERCEL) {
 			},
 			60 * 60 * 1000,
 		);
+
+		// Background Auto-Absent Marker (hourly): closes each branch's working day
+		// as ABSENT for employees who never punched, once that branch's workEnd
+		// has passed in local time. Idempotent - late punches still clear it.
+		const markAbsentSoon = () =>
+			runAutoAbsentMarking().catch((err) =>
+				console.error("[Background Auto-Absent Marker] Error:", err),
+			);
+		setTimeout(markAbsentSoon, 60 * 1000); // after DB warm-up, then hourly
+		setInterval(markAbsentSoon, 60 * 60 * 1000);
 	});
 }
 

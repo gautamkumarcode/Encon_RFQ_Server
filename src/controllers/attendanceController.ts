@@ -101,6 +101,7 @@ const shape = (a: any) => ({
 	totalWorkMinutes: a.totalWorkMinutes,
 	source: a.source,
 	remark: a.remark,
+	absent: !!a.absent,
 });
 
 // ---------------- Self-service (employee) ----------------
@@ -183,6 +184,9 @@ export const clockIn = async (req: AuthenticatedRequest, res: Response) => {
 					"clockIn.geofenceOk": ok,
 					"clockIn.ip": clientIp(req),
 					"clockIn.userAgent": req.headers["user-agent"] || "",
+					// A real punch always outweighs the end-of-day ABSENT marker, even
+					// if the employee clocks in after the auto-marker already ran.
+					absent: false,
 				},
 				$setOnInsert: { userId, date },
 			},
@@ -252,6 +256,7 @@ export const clockOut = async (req: AuthenticatedRequest, res: Response) => {
 
 		if (body.officeId && outOffice) open.officeId = outOffice._id; // explicit retag only
 		open.status = status;
+		open.absent = false;
 		open.totalWorkMinutes = totalWorkMinutes;
 		open.clockOut = {
 			time: now,
@@ -384,6 +389,10 @@ export const updateAttendance = async (req: AuthenticatedRequest, res: Response)
 
 		if (body.officeId !== undefined) rec.officeId = body.officeId || null;
 		if (body.status !== undefined) rec.status = body.status;
+		// Regularizing to any present-like status clears the auto-absent marker;
+		// an ABSENT punch day keeps it only while the day is still punch-less.
+		if (body.status !== undefined)
+			rec.absent = body.status === "ABSENT" && !rec.clockIn?.time;
 		if (body.remark !== undefined) rec.remark = body.remark;
 		if (body.clockInTime !== undefined) {
 			rec.clockIn = rec.clockIn || {};
@@ -424,6 +433,159 @@ export const deleteAttendance = async (req: AuthenticatedRequest, res: Response)
 			details: { attendanceId: req.params.id },
 		});
 		return res.json({ success: true, message: "Attendance record deleted" });
+	} catch (error: any) {
+		return res.status(400).json({ success: false, message: error.message });
+	}
+};
+
+// ---------------------------------------------------------------------------
+// Auto-absent marking.
+//
+// A working day with no clock-in is an absence, but nothing creates a row
+// until the end of the day says so. This marker walks each active branch's
+// finished working days (Monday-Saturday, minus branch/company holidays) and
+// inserts an ABSENT record for every assigned employee who never punched.
+// Runs hourly from the server's background poller (a day is only closed once
+// its branch's workEnd has passed in branch-local time) and is also exposed
+// as an endpoint so the register can backfill a range manually. Idempotent:
+// the { userId, date } unique index plus a punch-less existence check means
+// re-running never touches real attendance, and a late clock-in still wins
+// because clockIn clears the `absent` flag.
+// ---------------------------------------------------------------------------
+
+/** Employees tracked by attendance: ACTIVE, joined by the day, assigned to the branch. */
+async function officeAttendanceUserIds(officeId: string, throughDate: Date) {
+	const users: any[] = await User.find({
+		status: "ACTIVE",
+		officeId,
+	}).select("_id joiningDate");
+	return users
+		.filter((u) => !u.joiningDate || new Date(u.joiningDate) <= throughDate)
+		.map((u) => String(u._id));
+}
+
+/** Mark punch-less working days ABSENT for one branch between two day keys. */
+async function markAbsentForOffice(
+	office: any,
+	fromKey: string,
+	toKey: string,
+): Promise<{ marked: number; days: number }> {
+	const tz = office.timezone || "Asia/Kolkata";
+	const userIds = await officeAttendanceUserIds(String(office._id), new Date());
+	if (!userIds.length) return { marked: 0, days: 0 };
+
+	// Company-wide (officeId null) + branch-specific holidays are non-working.
+	const holidays: any[] = await Holiday.find({
+		$or: [{ officeId: null }, { officeId: office._id }],
+	}).select("date");
+	const holidayKeys = new Set(holidays.map((h) => dayKeyInTz(new Date(h.date), tz)));
+
+	const [fromDate, toDate] = [dayKeyToUtcDate(fromKey), dayKeyToUtcDate(toKey)];
+	const existing: any[] = await Attendance.find(
+		{ userId: { $in: userIds }, date: { $gte: fromDate, $lte: toDate } },
+		{ userId: 1, date: 1 },
+	).lean();
+	// Skip any employee-day that already has a row - a punch, an approved LEAVE,
+	// a manual HALF_DAY or a previous ABSENT closure. Only truly untouched
+	// working days get an ABSENT row, so this never clobbers real attendance or
+	// leave the approval flow wrote.
+	const existingUserDays = new Set<string>();
+	for (const r of existing) existingUserDays.add(String(r.userId) + "|" + r.date.getTime());
+
+	const ops: any[] = [];
+	const cur = new Date(fromDate);
+	while (cur <= toDate) {
+		const key = dayKeyInTz(cur, tz);
+		const dow = cur.getUTCDay(); // date is UTC midnight; day-of-week matches the branch key
+		const isWorking = dow >= 1 && dow <= 6 && !holidayKeys.has(key);
+		if (isWorking) {
+			const dayMs = cur.getTime();
+			for (const userId of userIds) {
+				if (existingUserDays.has(userId + "|" + dayMs)) continue;
+				ops.push({
+					updateOne: {
+						filter: { userId, date: cur },
+						update: {
+							$set: { status: "ABSENT", absent: true, officeId: office._id },
+							$setOnInsert: { userId, date: cur },
+						},
+						upsert: true,
+					},
+				});
+			}
+		}
+		cur.setUTCDate(cur.getUTCDate() + 1);
+	}
+
+	let marked = 0;
+	if (ops.length) {
+		// Ordered writes so a duplicate-key race with a simultaneous punch stops
+		// cleanly; already-punched days are excluded by clockIn clearing absent.
+		const res = await Attendance.bulkWrite(ops, { ordered: false });
+		marked = (res.upsertedCount || 0) + (res.modifiedCount || 0);
+	}
+	return { marked, days: ops.length ? new Set(ops.map((o) => String(o.updateOne.filter.date))).size : 0 };
+}
+
+const markAbsentSchema = z.object({
+	from: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+	to: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+	officeId: z.string().optional(),
+});
+
+/**
+ * Close finished punch-less working days across branches. With no range each
+ * branch's own current day is considered, and only once workEnd (+30 min
+ * buffer) has passed in branch-local time - this is what the hourly background
+ * job runs. With from/to, past days in the range are backfilled.
+ */
+export async function runAutoAbsentMarking(from?: string, to?: string, officeId?: string) {
+	const officeFilter = officeId ? [String(officeId)] : undefined;
+	const offices: any[] = await Office.find({
+		status: "ACTIVE",
+		...(officeFilter ? { _id: { $in: officeFilter } } : {}),
+	});
+
+	const results: { office: string; marked: number }[] = [];
+	let total = 0;
+	for (const office of offices) {
+		const tz = office.timezone || "Asia/Kolkata";
+		const nowKey = dayKeyInTz(new Date(), tz);
+		let fromKey = from || nowKey;
+		let toKey = to || nowKey;
+		if (!from && !to) {
+			// Live mode: the day is only over once workEnd passed in branch time.
+			const endMins = parseHHMMtoMinutes(office.workEnd || "18:30") + 30;
+			if (minutesOfDayInTz(new Date(), tz) < endMins) continue;
+		}
+		if (toKey > nowKey) toKey = nowKey; // never mark the future
+		if (fromKey > toKey) continue;
+		const { marked } = await markAbsentForOffice(office, fromKey, toKey);
+		if (marked) results.push({ office: office.name, marked });
+		total += marked;
+	}
+	return { marked: total, perOffice: results };
+}
+
+/**
+ * POST /api/attendance/mark-absent - close punch-less working days as ABSENT.
+ * Live mode (no body) or explicit from/to backfill; also used by the hourly
+ * background job inside runAutoAbsentMarking.
+ */
+export const markAbsent = async (req: AuthenticatedRequest, res: Response) => {
+	try {
+		const body = markAbsentSchema.parse(req.body || {});
+		const data = await runAutoAbsentMarking(body.from, body.to, body.officeId);
+
+		if (data.marked) {
+			await logActivity({
+				userId: req.user?.userId,
+				userEmail: req.user?.email || "SYSTEM",
+				action: "ATTENDANCE_MARKED_ABSENT",
+				details: { range: { from: body.from, to: body.to }, perOffice: data.perOffice },
+			});
+		}
+		return res.json({ success: true, data });
 	} catch (error: any) {
 		return res.status(400).json({ success: false, message: error.message });
 	}
@@ -507,9 +669,11 @@ export const exportAttendanceReport = async (req: AuthenticatedRequest, res: Res
 				byUser.set(id, s);
 			}
 			const tz = a.officeId?.timezone || "Asia/Kolkata";
-			s.Days++;
+			// Auto-absent closures aren't attended days - keep them out of Days.
+			if (!a.absent) s.Days++;
+			// LATE is a present day that started late, so it counts in both columns.
 			if (a.status === "PRESENT") s.Present++;
-			else if (a.status === "LATE") s.Late++;
+			else if (a.status === "LATE") { s.Present++; s.Late++; }
 			else if (a.status === "HALF_DAY") s["Half Day"]++;
 			else if (a.status === "LEAVE") s.Leave++;
 			else if (a.status === "ABSENT") s.Absent++;
@@ -524,8 +688,8 @@ export const exportAttendanceReport = async (req: AuthenticatedRequest, res: Res
 				"Emp Code": s["Emp Code"],
 				Email: s.Email,
 				Days: s.Days,
-				Present: s.Present,
-				Late: s.Late,
+				"Present (incl. Late)": s.Present,
+				"of which Late": s.Late,
 				"Half Day": s["Half Day"],
 				Leave: s.Leave,
 				Absent: s.Absent,
@@ -547,7 +711,7 @@ export const exportAttendanceReport = async (req: AuthenticatedRequest, res: Res
 
 		const wb = XLSX.utils.book_new();
 		const wsSummary = XLSX.utils.json_to_sheet(summaryRows);
-		wsSummary["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 28 }, { wch: 7 }, { wch: 8 }, { wch: 6 }, { wch: 9 }, { wch: 7 }, { wch: 7 }, { wch: 11 }, { wch: 12 }, { wch: 26 }];
+		wsSummary["!cols"] = [{ wch: 24 }, { wch: 10 }, { wch: 28 }, { wch: 7 }, { wch: 19 }, { wch: 13 }, { wch: 9 }, { wch: 7 }, { wch: 7 }, { wch: 11 }, { wch: 12 }, { wch: 26 }];
 		const wsLog = XLSX.utils.json_to_sheet(logRows);
 		wsLog["!cols"] = [{ wch: 11 }, { wch: 22 }, { wch: 10 }, { wch: 26 }, { wch: 14 }, { wch: 10 }, { wch: 6 }, { wch: 6 }, { wch: 7 }, { wch: 14 }, { wch: 14 }, { wch: 10 }, { wch: 8 }, { wch: 24 }];
 		const wsHolidays = XLSX.utils.json_to_sheet(holidayRows.length ? holidayRows : [{ Date: "", Holiday: "No holidays in range", "Applies To": "" }]);

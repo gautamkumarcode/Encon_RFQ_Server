@@ -37,6 +37,8 @@ export interface IAttendance extends Document {
   totalWorkMinutes: number | null;
   source: 'WEB' | 'MOBILE';
   remark: string;
+  /** Set when the end-of-day job marked a punch-less working day ABSENT. */
+  absent: boolean;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -72,6 +74,7 @@ const AttendanceSchema = new Schema<IAttendance>(
     totalWorkMinutes: { type: Number, default: null },
     source: { type: String, enum: ['WEB', 'MOBILE'], default: 'WEB' },
     remark: { type: String, default: '' },
+    absent: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

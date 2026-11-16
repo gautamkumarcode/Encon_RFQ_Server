@@ -407,6 +407,24 @@ export const HR_CAPABILITIES: CapabilityDef[] = [
     // Every staff role can clock themselves in - this is the everyday right.
     legacyGrantTo: ALL_STAFF,
   },
+  {
+    module: 'LEAVE_REQUEST',
+    label: 'Apply & Track Own Leave (Self-service)',
+    group: 'HR · Attendance',
+    description: 'Let a signed-in employee apply for leave, see their own requests and balance, and cancel a pending one.',
+    actions: ['READ', 'WRITE'],
+    // Every staff role applies for their own leave.
+    legacyGrantTo: ALL_STAFF,
+  },
+  {
+    module: 'HR_LEAVE',
+    label: 'Leave Approvals & Register',
+    group: 'HR · Attendance',
+    description: "View every employee's leave requests and approve or reject them. Approving writes LEAVE into the attendance register.",
+    actions: ['READ', 'WRITE'],
+    // READ lists the register, WRITE decides - both are the approver right.
+    legacyGrantTo: [...LEADERSHIP, 'HR'],
+  },
 ];
 
 /** Every capability the system knows about. Add later modules to this list. */

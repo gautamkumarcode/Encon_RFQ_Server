@@ -15,3 +15,4 @@ export * from './OrderInHand';
 export * from './Office';
 export * from './Attendance';
 export * from './Holiday';
+export * from './LeaveRequest';
