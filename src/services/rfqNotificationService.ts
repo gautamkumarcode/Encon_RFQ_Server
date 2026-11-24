@@ -34,7 +34,7 @@ export class RfqNotificationService {
   public static async checkAndSendTatReminders(): Promise<number> {
     try {
       const activeEnquiries: any[] = await Enquiry.find({
-        status: { $nin: ['Approved', 'Offer Sent', 'PO Received', 'Closed', 'REGRET'] },
+        status: { $not: /^(approved|offer sent|po received|closed|regret)$/i },
       }).lean();
 
       let remindersCount = 0;

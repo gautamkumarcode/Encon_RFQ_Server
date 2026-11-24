@@ -335,6 +335,7 @@ const CLOSED_STATUSES = new Set([
 	"lost",
 	"cancelled",
 	"rejected",
+	"offer sent",
 	"po received",
 	"regret",
 ]);
