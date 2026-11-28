@@ -340,7 +340,7 @@ const CLOSED_STATUSES = new Set([
 ]);
 const STANDARD_TAT_DAYS = 30;
 
-const FULL_ACCESS_ROLES = new Set(["ADMIN", "SALES_MARKETING"]);
+const FULL_ACCESS_ROLES = new Set(["ADMIN", "CEO", "SALES_MARKETING"]);
 const CAN_REVIEW_ROLES = new Set(["ADMIN", "CO", "GM", "PRODUCTION_HEAD"]);
 const CAN_EDIT_ROLES = new Set([
 	"ADMIN",
@@ -360,12 +360,11 @@ export function canSeeFullRfqList(user?: any): boolean {
 		.toUpperCase()
 		.trim();
 
-	// ONLY Super Admin / Admin and Sales & Marketing have full access to all RFQs
+	// Super Admin, Admin, CEO, and Sales & Marketing have full access to all RFQs.
 	if (
-		roleName === "ADMIN" ||
+		FULL_ACCESS_ROLES.has(roleName) ||
 		roleName.includes("ADMIN") ||
 		roleName.includes("SUPER") ||
-		roleName === "SALES_MARKETING" ||
 		roleName.includes("SALES") ||
 		roleName.includes("MARKETING")
 	) {
