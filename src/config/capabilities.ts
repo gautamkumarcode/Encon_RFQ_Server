@@ -44,6 +44,12 @@ export const capabilityKey = (module: string, action: CapabilityAction): string 
 
 const LEADERSHIP = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'];
 const FULL_RFQ_VIEW_ROLES = ['ADMIN', 'CEO', 'SALES_MARKETING'];
+export const RFQ_DRIVE_ROLES = [
+  'ADMIN',
+  'CEO',
+  'SALES_MARKETING',
+  'TECHNICAL_PERSON',
+];
 /** Anyone the old canEdit/canChangeStatus checks let edit an RFQ. */
 const ALL_RFK_USERS = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING', 'TECHNICAL_PERSON'];
 const ADMIN_ONLY = ['ADMIN'];
@@ -170,7 +176,7 @@ export const RFQ_CAPABILITIES: CapabilityDef[] = [
     group: 'RFQ · Documents',
     description: 'Open and sync the Drive folder created for an enquiry.',
     actions: ['READ', 'WRITE'],
-    legacyGrantTo: ALL_RFK_USERS,
+    legacyGrantTo: RFQ_DRIVE_ROLES,
   },
   {
     module: 'RFQ_IMPORT',

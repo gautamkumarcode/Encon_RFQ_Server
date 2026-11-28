@@ -13,7 +13,12 @@ import { connectDB } from '../config/db';
 import { Role } from '../models/Role';
 import { Permission, RolePermission } from '../models/Permission';
 import { User } from '../models/User';
-import { CAPABILITIES, grantsByRole, capabilityKey } from '../config/capabilities';
+import {
+  CAPABILITIES,
+  grantsByRole,
+  capabilityKey,
+  RFQ_DRIVE_ROLES,
+} from '../config/capabilities';
 
 dotenv.config();
 
@@ -30,6 +35,7 @@ export async function seedDatabase() {
   // 1. Roles
   const rolesData = [
     { name: 'ADMIN', description: 'System Administrator with full access', isSystem: true },
+    { name: 'CEO', description: 'Chief Executive Officer (View All RFQs)', isSystem: true },
     { name: 'CO', description: 'Commercial Officer (Full RFQ Access)', isSystem: true },
     { name: 'GM', description: 'General Manager (Full RFQ Access)', isSystem: true },
     { name: 'PRODUCTION_HEAD', description: 'Production Head (Full RFQ Access)', isSystem: true },
@@ -84,7 +90,25 @@ export async function seedDatabase() {
       );
     }
   }
-  console.log('✅ Applied catalogue-driven role grants');
+  // Drive is a strict allowlist. Remove stale grants even when this seed is run
+  // without the broader rbac:sync --revoke operation.
+  const drivePermissionIds = ['RFQ_DRIVE:READ', 'RFQ_DRIVE:WRITE']
+    .map((key) => permIdByKey.get(key))
+    .filter(Boolean);
+  const allowedDriveRoleIds = RFQ_DRIVE_ROLES
+    .map((roleName) => rolesMap[roleName])
+    .filter(Boolean);
+  let revokedDriveGrants = 0;
+  if (drivePermissionIds.length > 0 && allowedDriveRoleIds.length > 0) {
+    const removal = await RolePermission.deleteMany({
+      permissionId: { $in: drivePermissionIds },
+      roleId: { $nin: allowedDriveRoleIds },
+    });
+    revokedDriveGrants = removal.deletedCount || 0;
+  }
+  console.log(
+    `✅ Applied catalogue-driven role grants${revokedDriveGrants > 0 ? ` and removed ${revokedDriveGrants} stale Drive grant(s)` : ''}`
+  );
 
   // Read-only reassurance for whoever runs this against a live database: prove no
   // account was created or altered, and flag users whose roleId is empty (they would

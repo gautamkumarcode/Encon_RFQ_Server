@@ -1,5 +1,7 @@
 import axios from 'axios';
+import { RFQ_DRIVE_ROLES } from '../config/capabilities';
 import { Enquiry } from '../models/Enquiry';
+import '../models/Role';
 import { User } from '../models/User';
 
 // Subfolder names for clean organisation
@@ -9,6 +11,8 @@ const FOLDER_OFFER_DOCS = 'Offer Documents';
 
 let cachedAccessToken: { token: string; expiresAt: number } | null = null;
 let cachedParentFolder: { id: string; url: string } | null = null;
+let cachedDriveAuthError: string | null = null;
+const FULL_DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive';
 
 /**
  * Helper to get Google Drive configuration from environment variables
@@ -22,7 +26,6 @@ export function getGDriveConfig() {
     parentFolderId = '';
   }
   const parentFolderName = (process.env.GDRIVE_PARENT_FOLDER_NAME || 'RFQ_Dev').trim();
-  const shareWithEmails = (process.env.GDRIVE_SHARE_WITH || '').split(',').map((e) => e.trim()).filter(Boolean);
 
   const isConfigured = Boolean(clientId && clientSecret && refreshToken) || Boolean(parentFolderId);
 
@@ -32,7 +35,6 @@ export function getGDriveConfig() {
     refreshToken,
     parentFolderId,
     parentFolderName,
-    shareWithEmails,
     isConfigured,
   };
 }
@@ -43,6 +45,7 @@ export function getGDriveConfig() {
 async function getAccessToken(): Promise<string | null> {
   const config = getGDriveConfig();
   if (!config.clientId || !config.clientSecret || !config.refreshToken) {
+    cachedDriveAuthError = 'Google Drive OAuth credentials are not configured.';
     return null;
   }
 
@@ -61,7 +64,19 @@ async function getAccessToken(): Promise<string | null> {
 
     const accessToken = res.data.access_token;
     const expiresIn = res.data.expires_in || 3600;
+    const tokenInfo = await axios.get('https://oauth2.googleapis.com/tokeninfo', {
+      params: { access_token: accessToken },
+    });
+    const grantedScopes = new Set(
+      String(tokenInfo.data.scope || '').split(/\s+/).filter(Boolean)
+    );
+    if (!grantedScopes.has(FULL_DRIVE_SCOPE)) {
+      cachedDriveAuthError = `Google Drive OAuth is missing the full Drive scope. Run "npm run drive:authorize" and authorize ${FULL_DRIVE_SCOPE}.`;
+      console.error(`⚠️ ${cachedDriveAuthError}`);
+      return null;
+    }
 
+    cachedDriveAuthError = null;
     cachedAccessToken = {
       token: accessToken,
       expiresAt: now + expiresIn * 1000,
@@ -69,24 +84,20 @@ async function getAccessToken(): Promise<string | null> {
 
     return accessToken;
   } catch (err: any) {
+    cachedDriveAuthError = 'Could not refresh or validate the Google Drive OAuth token.';
     console.error('⚠️ Google Drive OAuth Token Error:', err.response?.data || err.message);
     return null;
   }
 }
 
-/**
- * Ensure a folder exists under a given parent folder ID in Google Drive.
- * Returns { id, webViewLink }
- */
-async function ensureFolder(
+/** Find an existing folder without creating anything. */
+async function findFolder(
   folderName: string,
   parentId: string,
   accessToken: string
-): Promise<{ id: string; url: string }> {
+): Promise<{ id: string; url: string } | null> {
   const safeName = folderName.replace(/'/g, "\\'");
   const query = `name = '${safeName}' and '${parentId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`;
-
-  // Search existing folder
   const searchRes = await axios.get('https://www.googleapis.com/drive/v3/files', {
     params: {
       q: query,
@@ -98,15 +109,26 @@ async function ensureFolder(
     headers: { Authorization: `Bearer ${accessToken}` },
   });
 
-  const files = searchRes.data.files || [];
-  if (files.length > 0) {
-    return {
-      id: files[0].id,
-      url: files[0].webViewLink || `https://drive.google.com/drive/folders/${files[0].id}`,
-    };
-  }
+  const folder = searchRes.data.files?.[0];
+  if (!folder) return null;
+  return {
+    id: folder.id,
+    url: folder.webViewLink || `https://drive.google.com/drive/folders/${folder.id}`,
+  };
+}
 
-  // Create folder if not found
+/**
+ * Ensure a folder exists under a given parent folder ID in Google Drive.
+ * Returns { id, webViewLink }
+ */
+async function ensureFolder(
+  folderName: string,
+  parentId: string,
+  accessToken: string
+): Promise<{ id: string; url: string }> {
+  const existing = await findFolder(folderName, parentId, accessToken);
+  if (existing) return existing;
+
   const createRes = await axios.post(
     'https://www.googleapis.com/drive/v3/files',
     {
@@ -125,54 +147,244 @@ async function ensureFolder(
 
   const folderId = createRes.data.id;
   const webViewLink = createRes.data.webViewLink || `https://drive.google.com/drive/folders/${folderId}`;
-
   return { id: folderId, url: webViewLink };
 }
 
-const sharedFolderIdsCache = new Set<string>();
+const folderSharePromises = new Map<string, Promise<boolean>>();
+const allowedDriveRoles = new Set(RFQ_DRIVE_ROLES.map((role) => role.toUpperCase()));
+
+interface FolderReconciliationResult {
+  success: boolean;
+  removed: number;
+  added: number;
+  updated: number;
+  failed: number;
+}
+
+export interface DriveAccessReconciliationResult {
+  success: boolean;
+  dryRun: boolean;
+  allowedUsers: number;
+  folders: number;
+  removed: number;
+  added: number;
+  updated: number;
+  failed: number;
+  message?: string;
+}
+
+async function getAllowedDriveEmails(): Promise<Set<string>> {
+  const dbUsers: any[] = await User.find({ status: 'ACTIVE' })
+    .populate('roleId', 'name')
+    .select('email roleId')
+    .lean();
+  const targetEmails = new Set<string>();
+  for (const user of dbUsers) {
+    const roleName = String(user.roleId?.name || '').toUpperCase().trim();
+    const email = String(user.email || '').trim().toLowerCase();
+    if (email && allowedDriveRoles.has(roleName)) {
+      targetEmails.add(email);
+    }
+  }
+  return targetEmails;
+}
+
+async function listFolderPermissions(folderId: string, accessToken: string): Promise<any[]> {
+  const permissions: any[] = [];
+  let pageToken: string | undefined;
+  do {
+    const response = await axios.get(
+      `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
+      {
+        params: {
+          fields: 'nextPageToken,permissions(id,type,role,emailAddress,permissionDetails)',
+          pageSize: 100,
+          pageToken,
+          supportsAllDrives: true,
+        },
+        headers: { Authorization: `Bearer ${accessToken}` },
+      }
+    );
+    permissions.push(...(response.data.permissions || []));
+    pageToken = response.data.nextPageToken;
+  } while (pageToken);
+  return permissions;
+}
+
+async function listChildFolders(folderId: string, accessToken: string): Promise<string[]> {
+  const childIds: string[] = [];
+  let pageToken: string | undefined;
+  do {
+    const response = await axios.get('https://www.googleapis.com/drive/v3/files', {
+      params: {
+        q: `'${folderId}' in parents and mimeType = 'application/vnd.google-apps.folder' and trashed = false`,
+        fields: 'nextPageToken,files(id)',
+        pageSize: 100,
+        pageToken,
+        spaces: 'drive',
+        supportsAllDrives: true,
+        includeItemsFromAllDrives: true,
+      },
+      headers: { Authorization: `Bearer ${accessToken}` },
+    });
+    childIds.push(...(response.data.files || []).map((folder: any) => String(folder.id)));
+    pageToken = response.data.nextPageToken;
+  } while (pageToken);
+  return childIds;
+}
 
 /**
- * Share folder with team emails (ALL database users + configured env emails)
+ * Enforce a strict direct-permission allowlist. Owners are preserved; public,
+ * domain, group and unrecognised user grants are removed. In dry-run mode the
+ * required changes are counted without making any Google Drive writes.
  */
-async function shareFolder(folderId: string, accessToken: string) {
-  if (!folderId || sharedFolderIdsCache.has(folderId)) {
-    return;
-  }
-  sharedFolderIdsCache.add(folderId);
-
-  const config = getGDriveConfig();
-  const targetEmails = new Set<string>(config.shareWithEmails.map((e) => e.toLowerCase()));
+async function reconcileFolderPermissions(
+  folderId: string,
+  accessToken: string,
+  targetEmails: Set<string>,
+  dryRun = false,
+  ensureAllowedAccess = true
+): Promise<FolderReconciliationResult> {
+  const result: FolderReconciliationResult = {
+    success: true,
+    removed: 0,
+    added: 0,
+    updated: 0,
+    failed: 0,
+  };
 
   try {
-    const dbUsers: any[] = await User.find({ status: 'ACTIVE' }).select('email').lean();
-    for (const u of dbUsers) {
-      if (u.email && u.email.trim()) {
-        targetEmails.add(u.email.trim().toLowerCase());
+    const permissions = await listFolderPermissions(folderId, accessToken);
+    const existingByEmail = new Map<string, any>();
+
+    for (const permission of permissions) {
+      const inherited = Array.isArray(permission.permissionDetails)
+        && permission.permissionDetails.some((detail: any) => detail?.inherited);
+      if (inherited) continue;
+
+      const email = String(permission.emailAddress || '').trim().toLowerCase();
+      if (permission.role === 'owner') {
+        if (email && targetEmails.has(email)) existingByEmail.set(email, permission);
+        continue;
+      }
+
+      const isAllowedUser = permission.type === 'user' && email && targetEmails.has(email);
+      if (!isAllowedUser) {
+        if (dryRun || !permission.id) {
+          if (!permission.id && !dryRun) result.failed++;
+          else result.removed++;
+          continue;
+        }
+        try {
+          await axios.delete(
+            `https://www.googleapis.com/drive/v3/files/${folderId}/permissions/${encodeURIComponent(String(permission.id))}`,
+            {
+              params: { supportsAllDrives: true },
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }
+          );
+          result.removed++;
+        } catch (err: any) {
+          result.failed++;
+          console.error(`⚠️ Could not remove Drive permission ${permission.id} from ${folderId}:`, err.response?.data || err.message);
+        }
+        continue;
+      }
+
+      existingByEmail.set(email, permission);
+    }
+
+    // Child folders inherit access from the app parent. Only revoke direct
+    // grants there; do not create redundant permissions on every RFQ folder.
+    if (!ensureAllowedAccess) {
+      result.success = result.failed === 0;
+      return result;
+    }
+
+    for (const email of targetEmails) {
+      const existing = existingByEmail.get(email);
+      if (!existing) {
+        if (dryRun) {
+          result.added++;
+          continue;
+        }
+        try {
+          await axios.post(
+            `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
+            { type: 'user', role: 'writer', emailAddress: email },
+            {
+              // Some staff addresses need a Google Account invitation.
+              params: { sendNotificationEmail: true, supportsAllDrives: true },
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }
+          );
+          result.added++;
+        } catch (err: any) {
+          result.failed++;
+          console.error(`⚠️ Could not grant Drive access to ${email} on ${folderId}:`, err.response?.data || err.message);
+        }
+      } else if (!['owner', 'organizer'].includes(existing.role)) {
+        if (dryRun) {
+          result.updated++;
+          continue;
+        }
+        try {
+          await axios.patch(
+            `https://www.googleapis.com/drive/v3/files/${folderId}/permissions/${encodeURIComponent(String(existing.id))}`,
+            { role: 'writer' },
+            {
+              params: { supportsAllDrives: true },
+              headers: { Authorization: `Bearer ${accessToken}` },
+            }
+          );
+          result.updated++;
+        } catch (err: any) {
+          result.failed++;
+          console.error(`⚠️ Could not update Drive permission for ${email} on ${folderId}:`, err.response?.data || err.message);
+        }
       }
     }
-  } catch (err) {
-    console.error('⚠️ Could not fetch database users for Google Drive sharing:', err);
+  } catch (err: any) {
+    result.failed++;
+    console.error('⚠️ Could not reconcile Google Drive folder permissions:', err.response?.data || err.message);
   }
 
-  for (const email of Array.from(targetEmails)) {
+  result.success = result.failed === 0;
+  return result;
+}
+
+/** Reconcile one folder, coalescing concurrent requests for the same folder. */
+async function shareFolder(
+  folderId: string,
+  accessToken: string,
+  ensureAllowedAccess = true
+): Promise<boolean> {
+  if (!folderId) return false;
+  const pending = folderSharePromises.get(folderId);
+  if (pending) return pending;
+
+  const promise = (async () => {
     try {
-      await axios.post(
-        `https://www.googleapis.com/drive/v3/files/${folderId}/permissions`,
-        {
-          type: 'user',
-          role: 'writer',
-          emailAddress: email,
-        },
-        {
-          params: { sendNotificationEmail: false, supportsAllDrives: true },
-          headers: { Authorization: `Bearer ${accessToken}` },
-        }
+      // Never revoke grants when the role lookup itself failed.
+      const targetEmails = await getAllowedDriveEmails();
+      const result = await reconcileFolderPermissions(
+        folderId,
+        accessToken,
+        targetEmails,
+        false,
+        ensureAllowedAccess
       );
-      console.log(`🤝 Shared Google Drive folder with ${email}`);
-    } catch (e: any) {
-      // Ignore if already shared
+      return result.success;
+    } catch (err) {
+      console.error('⚠️ Could not resolve allowed Google Drive users:', err);
+      return false;
+    } finally {
+      folderSharePromises.delete(folderId);
     }
-  }
+  })();
+
+  folderSharePromises.set(folderId, promise);
+  return promise;
 }
 
 /**
@@ -181,18 +393,30 @@ async function shareFolder(folderId: string, accessToken: string) {
 async function ensureParentFolder(accessToken: string): Promise<{ id: string; url: string }> {
   const config = getGDriveConfig();
   if (config.parentFolderId) {
-    return {
+    const result = {
       id: config.parentFolderId,
       url: `https://drive.google.com/drive/folders/${config.parentFolderId}`,
     };
+    const reconciled = await shareFolder(result.id, accessToken);
+    if (!reconciled) {
+      throw new Error('Could not enforce the allowed-user list on the RFQ parent Drive folder.');
+    }
+    return result;
   }
 
   if (cachedParentFolder) {
+    const reconciled = await shareFolder(cachedParentFolder.id, accessToken);
+    if (!reconciled) {
+      throw new Error('Could not enforce the allowed-user list on the cached RFQ parent Drive folder.');
+    }
     return cachedParentFolder;
   }
 
   const result = await ensureFolder(config.parentFolderName, 'root', accessToken);
-  await shareFolder(result.id, accessToken);
+  const reconciled = await shareFolder(result.id, accessToken);
+  if (!reconciled) {
+    throw new Error('Could not enforce the allowed-user list on the new RFQ parent Drive folder.');
+  }
   cachedParentFolder = result;
   return result;
 }
@@ -315,7 +539,12 @@ async function getOrEnsureRfqFolder(
   const enquiry: any = await Enquiry.findById(enquiryId).lean();
   if (!enquiry) return { id: '', url: '' };
 
+  const parentFolder = await ensureParentFolder(accessToken);
   if (enquiry.driveFolderId && enquiry.driveFolderUrl) {
+    const reconciled = await shareFolder(enquiry.driveFolderId, accessToken, false);
+    if (!reconciled) {
+      throw new Error('Could not remove disallowed direct access from the existing RFQ Drive folder.');
+    }
     return { id: enquiry.driveFolderId, url: enquiry.driveFolderUrl };
   }
 
@@ -325,10 +554,12 @@ async function getOrEnsureRfqFolder(
 
   const promise = (async () => {
     try {
-      const parentFolder = await ensureParentFolder(accessToken);
       const rfqFolderName = enquiry.rfqId || `enquiry-${enquiry._id}`;
       const rfqFolder = await ensureFolder(rfqFolderName, parentFolder.id, accessToken);
-      await shareFolder(rfqFolder.id, accessToken);
+      const reconciled = await shareFolder(rfqFolder.id, accessToken, false);
+      if (!reconciled) {
+        throw new Error('Could not enforce the allowed-user list on the new RFQ Drive folder.');
+      }
 
       // Create default subfolders
       await ensureFolder(FOLDER_CLIENT_DOCS, rfqFolder.id, accessToken);
@@ -465,6 +696,113 @@ export async function ensureEnquiryDriveFolder(enquiryId: string): Promise<strin
     console.error('⚠️ Failed to ensure Google Drive folder:', err.message);
     return '';
   }
+}
+
+/**
+ * Reconcile the app parent, every stored RFQ folder and all descendant folders.
+ * Dry-run is the default for the command-line wrapper so existing access can be
+ * inspected before any permission is removed.
+ */
+export async function reconcileRfqDriveAccess(
+  dryRun = true
+): Promise<DriveAccessReconciliationResult> {
+  const result: DriveAccessReconciliationResult = {
+    success: false,
+    dryRun,
+    allowedUsers: 0,
+    folders: 0,
+    removed: 0,
+    added: 0,
+    updated: 0,
+    failed: 0,
+  };
+
+  console.log('🔑 Refreshing Google Drive access token...');
+  const accessToken = await getAccessToken();
+  if (!accessToken) {
+    result.message = cachedDriveAuthError || 'Google Drive OAuth credentials are not configured.';
+    return result;
+  }
+
+  let targetEmails: Set<string>;
+  try {
+    targetEmails = await getAllowedDriveEmails();
+    result.allowedUsers = targetEmails.size;
+    console.log(`👥 Resolved ${result.allowedUsers} active user(s) in allowed Drive roles.`);
+  } catch (err) {
+    result.message = 'Could not resolve active users and their roles.';
+    result.failed = 1;
+    console.error('⚠️ Could not resolve allowed Google Drive users:', err);
+    return result;
+  }
+
+  const config = getGDriveConfig();
+  let parentFolderId = config.parentFolderId || cachedParentFolder?.id || '';
+  if (!parentFolderId) {
+    if (dryRun) {
+      const existingParent = await findFolder(config.parentFolderName, 'root', accessToken);
+      parentFolderId = existingParent?.id || '';
+    } else {
+      const parentFolder = await ensureParentFolder(accessToken);
+      parentFolderId = parentFolder.id;
+    }
+  }
+
+  const folderIds = new Set<string>();
+  if (parentFolderId) folderIds.add(parentFolderId);
+  const storedFolderIds = await Enquiry.distinct('driveFolderId', {
+    driveFolderId: { $type: 'string', $ne: '' },
+  });
+  for (const folderId of storedFolderIds) {
+    if (folderId) folderIds.add(String(folderId));
+  }
+
+  const queue = Array.from(folderIds);
+  const visited = new Set<string>();
+  console.log(`📁 Found ${folderIds.size} root folder(s); scanning descendants...`);
+
+  const worker = async () => {
+    while (queue.length > 0) {
+      const folderId = queue.shift()!;
+      if (visited.has(folderId)) continue;
+      visited.add(folderId);
+      result.folders++;
+
+      const folderResult = await reconcileFolderPermissions(
+        folderId,
+        accessToken,
+        targetEmails,
+        dryRun,
+        folderId === parentFolderId
+      );
+      result.removed += folderResult.removed;
+      result.added += folderResult.added;
+      result.updated += folderResult.updated;
+      result.failed += folderResult.failed;
+
+      try {
+        const childIds = await listChildFolders(folderId, accessToken);
+        for (const childId of childIds) {
+          if (!visited.has(childId)) queue.push(childId);
+        }
+      } catch (err: any) {
+        result.failed++;
+        console.error(`⚠️ Could not list child Drive folders for ${folderId}:`, err.response?.data || err.message);
+      }
+
+      if (result.folders % 25 === 0) {
+        console.log(`   Checked ${result.folders} folder(s)...`);
+      }
+    }
+  };
+
+  await Promise.all(Array.from({ length: 8 }, () => worker()));
+
+  result.success = result.failed === 0 && result.folders > 0;
+  if (result.folders === 0) {
+    result.message = 'No app-managed RFQ Drive folders were found.';
+  }
+  return result;
 }
 
 /**

@@ -33,7 +33,8 @@ import {
 	uploadAttachment,
 	verifyReview,
 } from "../controllers/rfqController";
-import { authenticateToken } from "../middleware/authMiddleware";
+import { authenticateToken, requirePermission, requireRoles } from "../middleware/authMiddleware";
+import { RFQ_DRIVE_ROLES } from "../config/capabilities";
 
 const upload = multer({ storage: multer.memoryStorage() });
 const router = Router();
@@ -107,8 +108,18 @@ router.get("/inbox-status", getInboxStatusApi);
 
 router.get("/:id", getEnquiryById);
 router.get("/:id/automation-url", getAutomationUrlApi);
-router.get("/:id/drive", openDriveFolderApi);
-router.post("/:id/sync-drive", syncDriveFolderApi);
+router.get(
+  "/:id/drive",
+  requireRoles(RFQ_DRIVE_ROLES),
+  requirePermission("RFQ_DRIVE", "READ"),
+  openDriveFolderApi,
+);
+router.post(
+  "/:id/sync-drive",
+  requireRoles(RFQ_DRIVE_ROLES),
+  requirePermission("RFQ_DRIVE", "WRITE"),
+  syncDriveFolderApi,
+);
 router.put("/:id", updateEnquiry);
 router.patch("/:id/inline", inlineUpdateField);
 router.post("/:id/followup", addFollowup);

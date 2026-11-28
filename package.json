@@ -10,6 +10,8 @@
 		"dev": "npx ts-node-dev --respawn --transpile-only src/server.ts",
 		"seed": "ts-node src/scripts/seed.ts",
 		"rbac:sync": "ts-node src/scripts/rbacSync.ts",
+		"drive:reconcile": "ts-node src/scripts/reconcileDriveAccess.ts",
+		"drive:authorize": "ts-node src/scripts/authorizeDriveAccess.ts",
 		"parser:check": "ts-node src/services/inboxParser.check.ts",
 		"reset-db-keep-admin": "ts-node src/utils/resetDbKeepAdmin.ts",
 		"clear-rfq-data": "ts-node src/utils/clearRfqData.ts",
