@@ -43,13 +43,13 @@ export const capabilityKey = (module: string, action: CapabilityAction): string 
   `${module}:${action}`;
 
 const LEADERSHIP = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD'];
-const SALES = ['ADMIN', 'SALES_MARKETING'];
+const FULL_RFQ_VIEW_ROLES = ['ADMIN', 'CEO', 'SALES_MARKETING'];
 /** Anyone the old canEdit/canChangeStatus checks let edit an RFQ. */
 const ALL_RFK_USERS = ['ADMIN', 'CO', 'GM', 'PRODUCTION_HEAD', 'SALES_MARKETING', 'TECHNICAL_PERSON'];
 const ADMIN_ONLY = ['ADMIN'];
 /** Every staff role - used for self-service rights like clocking in. */
-// HR is a staff role too, so its own people can clock in like everyone else.
-const ALL_STAFF = [...ALL_RFK_USERS, 'HR'];
+// CEO and HR are staff roles too, so their people can use self-service features.
+const ALL_STAFF = [...ALL_RFK_USERS, 'CEO', 'HR'];
 
 export const RFQ_CAPABILITIES: CapabilityDef[] = [
   {
@@ -66,7 +66,7 @@ export const RFQ_CAPABILITIES: CapabilityDef[] = [
     group: 'RFQ · Access',
     description: 'See all enquiries in the system, not only the ones assigned to you.',
     actions: ['READ'],
-    legacyGrantTo: SALES,
+    legacyGrantTo: FULL_RFQ_VIEW_ROLES,
   },
   {
     module: 'RFQ_ENTRY',
